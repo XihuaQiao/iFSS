@@ -85,7 +85,7 @@ class WeightImprinting(Trainer):
         for ep in range(epochs):
             with torch.no_grad():
                 for idx in range(len(dataset)):
-                    images, labels = dataset[idx]
+                    images, labels, _ = dataset[idx]
                     images = images.to(self.device, dtype=torch.float32)
                     labels = labels.to(self.device, dtype=torch.long)
 

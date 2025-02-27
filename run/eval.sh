@@ -10,6 +10,7 @@ ds=voc
 task=$2
 step=$3
 name=$4
+extra=$5
 
 path=checkpoints/step/${task}-${ds}
 
@@ -18,9 +19,9 @@ for ns in 1 2 5; do
     echo "step - ${step}"
     if [ "${step}" = "1" ]; then
       inc_par="--ishot ${is} --nshot ${ns}"
-        exp --method PIFS --name ${name} --test ${gen_par} ${inc_par} --step ${step} --ckpt ${path}/${name}-s${ns}-i${is}_${step}.pth
+        exp --method PIFS --name ${name} --test ${gen_par} ${inc_par} --step ${step} --ckpt ${path}/${name}-s${ns}-i${is}_${step}.pth ${extra}
     else
-      exp --method PIFS --name ${name} --test ${gen_par} --step ${step} --ckpt ${path}/${name}_${step}.pth
+      exp --method PIFS --name ${name} --test ${gen_par} --step ${step} --ckpt ${path}/${name}_${step}.pth ${extra}
     fi
   done
 done

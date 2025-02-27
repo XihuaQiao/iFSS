@@ -22,7 +22,7 @@ export CUDA_VISIBLE_DEVICES=0
 
 gen_par="--task ${task} --dataset ${ds} --batch_size 10"
 lr=0.001
-iter=1000
+iter=0
 path=checkpoints/step/${task}-${ds}
 for ns in 5; do  # shot 1/2/5 images
   for is in 0 1 2; do  # image samples

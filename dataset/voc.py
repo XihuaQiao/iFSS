@@ -93,7 +93,10 @@ class VOCSegmentation(data.Dataset):
         if self.transform is not None:
             img, target = self.transform(img, target)
 
-        return img, target
+        return img, target, 'images/' + self.images[index][0].split('/')[-1]
+    
+    def getName(self, index):
+        return 'images/' + self.images[index][0].split('/')[-1]
 
     def __len__(self):
         return len(self.images)

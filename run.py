@@ -10,6 +10,8 @@ import numpy as np
 import random
 import torch
 
+import json
+
 def force_cudnn_initialization():
     s = 32
     dev = torch.device('cuda')
@@ -322,6 +324,12 @@ def main(opts):
     model.model.load_state_dict(checkpoint["model_state"]['model'])
     logger.info(f"*** Model restored from {checkpoint_path if opts.ckpt is None else opts.ckpt}")
     del checkpoint
+
+    if opts.memory:
+        memories = model.memory(train_loader, topK=5, num_classes=16)
+        with open(opts.ckpt.replace('pth', 'json'), 'w') as file:
+            json.dump(memories, file)
+        return
 
     val_loss, ret_samples = model.validate(loader=test_loader_all, metrics=val_metrics,
                                            ret_samples_ids=sample_ids)

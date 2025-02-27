@@ -1,6 +1,7 @@
 import torch
 from torch import distributed
 import torch.nn as nn
+import torch.nn.functional as F
 from torch.nn.parallel import DistributedDataParallel
 from utils.loss import KnowledgeDistillationLoss, CosineLoss, MyCrossEntropy, \
     UnbiasedKnowledgeDistillationLoss, UnbiasedCrossEntropy, CosineKnowledgeDistillationLoss, PixelContrastLoss
@@ -8,6 +9,15 @@ from utils.KD_loss import *
 from .segmentation_module import make_model
 from modules.classifier import IncrementalClassifier, CosineClassifier, SPNetClassifier
 from .utils import get_scheduler, MeanReduction, printCUDA
+
+import numpy as np
+
+import json
+import pickle as pkl
+import os.path as osp
+
+import random
+from PIL import Image
 
 CLIP = 10
 
@@ -43,6 +53,7 @@ class Trainer:
         self.initialize(opts)  # initialize model parameters (e.g. perform WI)
 
         self.born_again = opts.born_again
+        self.save_memory = opts.memory
         self.dist_warm_start = opts.dist_warm_start
         model_old_as_new = opts.born_again or opts.dist_warm_start
         if self.need_model_old:
@@ -251,7 +262,7 @@ class Trainer:
         cur_step = 0
         for iteration in range(n_iter):
             train_loader.sampler.set_epoch(cur_epoch*n_iter + iteration)  # setup dataloader sampler
-            for images, labels in train_loader:
+            for images, labels, _ in train_loader:
 
                 images = images.to(device, dtype=torch.float32)
                 labels = labels.to(device, dtype=torch.long)
@@ -399,7 +410,7 @@ class Trainer:
         ret_samples = []
         with torch.no_grad():
             model.eval()
-            for i, (images, labels) in enumerate(loader):
+            for i, (images, labels, _) in enumerate(loader):
 
                 images = images.to(device, dtype=torch.float32)
                 labels = labels.to(device, dtype=torch.long)
@@ -435,6 +446,91 @@ class Trainer:
                 logger.info(f"Validation, Class Loss={class_loss}")
 
         return class_loss, ret_samples
+    
+
+    def memory(self, loader, root='data', dataName='voc', topK=1, num_classes=20):
+        idxes = {}
+        class_to_images = pkl.load(open(f'{root}/{dataName}/split/inverse_dict_train.pkl', 'rb'))
+        # images = np.load(f'{root}/{dataName}/split/train_ids.npy')
+
+        novel_images = set()
+        for cl, img_set in class_to_images.items():
+            if cl not in loader.dataset.labels and (cl != 0):
+                novel_images.update(img_set)
+        
+        print(novel_images)
+
+        for cl in loader.dataset.labels:
+            idxes[cl] = random.sample(set(class_to_images[cl].tolist()).difference(novel_images), topK)
+        
+        return idxes        
+    
+
+    # def memory(self, loader, root='data', dataName='voc', topK=1, num_classes=20):
+    #     model = self.model
+    #     device = self.device
+    #     model.eval()
+
+    #     similarity_matrix = []
+    #     img_list = []
+
+    #     with torch.no_grad():
+    #         for t, (images, labels, names) in enumerate(loader):
+    #             images = images.to(device, dtype=torch.float32)
+    #             labels = labels.to(device, dtype=torch.long)
+    #             img_list.extend(list(names))
+
+    #             outputs, feat = model(images, return_feat=True)
+    #             outputs = F.softmax(outputs, dim=1)
+
+    #             # outputs = outputs.cpu().numpy()
+    #             _, predictions = outputs.max(dim=1)
+    #             #TODO 用prediction还是label去计算prototype
+
+    #             for i in range(images.shape[0]):
+    #                 clses = labels[i].unique().cpu().numpy()
+    #                 clses = clses[(clses != 0) & (clses != 255)]
+    #                 matrix = np.zeros((num_classes))
+    #                 for cls in clses:
+    #                     feat = F.interpolate(feat, size=labels.shape[-2:], mode='bilinear', align_corners=False)
+    #                     mask = labels[i] == cls
+    #                     gap_logit = feat[i, :, mask].mean(dim=1)
+    #                     # print(f"logit - {gap_logit}, cls - {model.module.cls.cls[0].weight.data[cls].squeeze().shape}")
+    #                     # gap_logit = outputs[i, cls][predictions[i] == cls].mean()
+    #                     matrix[cls] = F.cosine_similarity(gap_logit.unsqueeze(0), model.module.cls.cls[0].weight.data[cls].squeeze().unsqueeze(0), dim=1)
+    #                 similarity_matrix.append(matrix)
+
+    #     similarity_matrix = np.stack(similarity_matrix, axis=0)
+    #     cls_to_names = {}
+        
+    #     for cls in range(1, num_classes):
+    #         indices = np.argsort(similarity_matrix[:, cls])[-topK:][::-1].tolist()
+    #         cls_to_names[cls] = []
+    #         # print(f"class {cls} - {[similarity_matrix[idx, cls] for idx in indices]}")
+    #         for idx in indices:
+    #             name = img_list[idx].split('/')[-1].split('.')[0]
+    #             lbl = np.array(Image.open(f'data/voc/dataset/annotations/{name}.png'))
+    #             # print(f"class {cls} - {np.unique(lbl)}")
+    #             cls_to_names[cls].append(f"images/{name}.jpg")
+    #         # idxes.update(set(indices))
+
+    #     # print(cls_to_names)
+
+    #     images = np.load(f'{root}/{dataName}/split/train_list.npy')
+    #     cls_to_indexs = {}
+    #     for cl, names in cls_to_names.items():
+    #         cls_to_indexs[cl] = []
+    #         for name in names:
+    #             cls_to_indexs[cl].append(int(np.where(images[:,0] == name)[0][0]))
+
+    #     print(cls_to_indexs)
+        
+    #     # images = np.load(f'data/voc/split/train_ids.npy')
+    #     # images = [(f'data/voc/dataset/images/{i}.jpg', f'data/voc/dataset/annotations/{i}.jpg') for i, img in enumerate(images) if i in idxes]
+    #     # print(images)
+
+    #     return cls_to_indexs
+
 
     def load_state_dict(self, checkpoint, strict=True):
         state = {}
@@ -465,9 +561,9 @@ class Trainer:
 
             self.model.load_state_dict(model_state, strict=strict)
 
-            if not self.born_again and strict:  # if strict, we are in ckpt (not step) so load also optim and scheduler
+            if not self.born_again and strict and not self.save_memory:  # if strict, we are in ckpt (not step) so load also optim and scheduler
                 print(f"optimizer - {checkpoint['optimizer']['param_groups']}")
-                # print(f"self optimizer - {self.optimizer['param_groups']}")
+                print(f"self optimizer - {self.optimizer['param_groups']}")
                 self.optimizer.load_state_dict(checkpoint["optimizer"])
                 self.scheduler.load_state_dict(checkpoint["scheduler"])
 
@@ -475,14 +571,3 @@ class Trainer:
         state = {"model": self.model.state_dict(), "optimizer": self.optimizer.state_dict(),
                  "scheduler": self.scheduler.state_dict()}
         return state
-    
-    
-    # def memory(self, train_loader, size=1, ignore_index=255):
-    #     # 存images,features,labels?
-    #     self.features = []
-    #     for images, labels in train_loader:
-    #         images = images.to(self.device, dtype=torch.float32)
-    #         labels = labels.to(self.device, dtype=torch.long)
-
-    #         classes = 
-

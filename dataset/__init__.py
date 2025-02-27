@@ -6,6 +6,7 @@ from .transform import Compose, RandomScale, RandomCrop, RandomHorizontalFlip, T
     CenterCrop, Resize, RandomResizedCrop, ColorJitter, PadCenterCrop
 import random
 from .utils import Subset, MyImageFolder, RandomDataset
+import json
 
 TRAIN_CV = 0.8
 
@@ -68,6 +69,14 @@ def get_dataset(opts, task, train=True):
         raise NotImplementedError
 
     if train:
+        if opts.step > 0 and opts.memory_path:
+            with open(opts.memory_path) as file:
+                memory = json.load(file)
+            print(f"loaded memory from {opts.memory_path}")
+            for k in memory.keys():
+                memory[k] = memory[k][:opts.nshot]
+        else:
+            memory = None
         if opts.cross_val:
             train_dst = dataset(root=opts.data_root, task=task, train=True, transform=None)
             train_len = int(TRAIN_CV * len(train_dst))
@@ -77,8 +86,8 @@ def get_dataset(opts, task, train=True):
             val_dst = Subset(train_dst, idx[train_len:], val_transform)
             train_dst_noaug = Subset(train_dst, idx[:train_len], test_transform)
         else:
-            train_dst = dataset(root=opts.data_root, task=task, train=True, transform=train_transform, masking=opts.masking)
-            train_dst_noaug = dataset(root=opts.data_root, task=task, train=True, transform=test_transform, masking=opts.masking)
+            train_dst = dataset(root=opts.data_root, task=task, train=True, transform=train_transform, masking=opts.masking, memory=memory)
+            train_dst_noaug = dataset(root=opts.data_root, task=task, train=True, transform=test_transform, masking=opts.masking, memory=memory)
             val_dst = dataset(root=opts.data_root, task=task, train=False, transform=val_transform)
 
         return train_dst, val_dst, train_dst_noaug

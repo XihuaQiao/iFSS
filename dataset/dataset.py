@@ -12,7 +12,8 @@ class FSSDataset(data.Dataset):
                  task,
                  train=True,
                  transform=None,
-                 masking=False):
+                 masking=False,
+                 memory=None):
 
         self.full_data = self.make_dataset(root, train)
         self.transform = transform
@@ -87,6 +88,16 @@ class FSSDataset(data.Dataset):
                 lbls = [cl] if masking else self.labels_old + [cl]
                 # this is useful to reorder the labels (not to mask since we already excluded the to-mask classes)
                 target_transform[i+1] = self.get_mapping_transform(lbls, masking=True, masking_value=masking_value)
+            if memory:
+                idxs[0] = []
+                target_transform[0] = []
+                for cls, l in memory.items():
+                    idxs[0].extend(l)
+                    target_transform[0].append(self.get_mapping_transform([int(cls)], masking=True, masking_value=masking_value))
+
+                # memories = list(memories)
+                # target_transform[0] = self.get_mapping_transform(self.labels_old, masking=True, masking_value=masking_value)
+                
 
         # make the subset of the dataset
         self.indices = []
@@ -97,14 +108,14 @@ class FSSDataset(data.Dataset):
             count = 0
             if 0 in idxs:
                 dts_list.append(Subset(self.full_data, idxs[0],
-                                       transform=transform, target_transform=target_transform[0]))
+                                       transform=transform, target_transform=target_transform[0], memory=True))
                 for cl in self.labels_old:
                     self.class_to_images[cl] = []
                     for new_idx, idx in enumerate(idxs):
                         if idx in self.full_data.class_to_images[cl]:
                             self.class_to_images[cl].append(new_idx)
                 count += len(idxs[0])
-            for i in range(1, len(self.labels)+1):
+            for i in range(1, len(self.labels) + 1):
                 dts_list.append(Subset(self.full_data, idxs[i],
                                        transform=transform, target_transform=target_transform[i]))
                 self.class_to_images[self.labels[i-1]] = list(range(count, count+len(idxs[i])))
@@ -136,8 +147,11 @@ class FSSDataset(data.Dataset):
                 raise ValueError("absolute value of index should not exceed dataset length")
             index = len(self) + index
 
-        img, lbl = self.dataset[index]
-        return img, lbl
+        img, lbl, name = self.dataset[index]
+        return img, lbl, name
+    
+    def getName(self, index):
+        return self.dataset.getName(index)
 
     def __len__(self):
         return len(self.dataset)

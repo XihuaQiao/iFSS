@@ -65,25 +65,34 @@ class Subset(torch.utils.data.Dataset):
         target_transform(callable): way to transform the target labels
     """
 
-    def __init__(self, dataset, indices, transform=None, target_transform=None):
+    def __init__(self, dataset, indices, transform=None, target_transform=None, memory=False):
         self.dataset = dataset
         self.indices = indices
         self.transform = transform
         self.target_transform = target_transform
+        self.memory = memory
 
     def __getitem__(self, idx):
-        sample, target = self.dataset[self.indices[idx]]
+        sample, target, name = self.dataset[self.indices[idx]]
 
         if self.transform is not None:
             sample, target = self.transform(sample, target)
 
         if self.target_transform is not None:
-            target = self.target_transform(target)
+            if self.memory:
+                shot = len(self.indices) // 15
+                # print(f"idx - {idx} - {self.target_transform[idx // shot].mapping}")
+                target = self.target_transform[idx // shot](target)
+            else:
+                target = self.target_transform(target)
 
-        return sample, target
+        return sample, target, name
 
     def __len__(self):
         return len(self.indices)
+    
+    def getName(self, index):
+        return self.dataset.getName(index)
 
 
 class ConcatDataset(torch.utils.data.Dataset):

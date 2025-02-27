@@ -19,7 +19,7 @@ def modify_command_options(opts):
     if opts.method == "PIFS":
         opts.method = "WI"
         opts.norm_act = "iabr"
-        # opts.loss_kd = 10
+        opts.loss_kd = 10
         opts.dist_warm_start = True
     elif opts.method == 'LWF':
         opts.loss_kd = 10 if opts.loss_kd == 0 else opts.loss_kd
@@ -129,6 +129,9 @@ def get_argparser():
                         help="mixup for data augmentation")
     parser.add_argument("--mixup_alpha", type=float, default=0.1)
     parser.add_argument("--layer_mix", type=int, default=None)
+
+    parser.add_argument("--memory", action='store_true', default=False)
+    parser.add_argument("--memory_path", type=str, default=None)
 
     # memory mixup data from base
     parser.add_argument("--memory_mixup", action='store_true', default=False,
