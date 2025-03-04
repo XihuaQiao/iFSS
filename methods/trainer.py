@@ -466,70 +466,71 @@ class Trainer:
         return idxes        
     
 
-    # def memory(self, loader, root='data', dataName='voc', topK=1, num_classes=20):
-    #     model = self.model
-    #     device = self.device
-    #     model.eval()
+    def memory(self, loader, root='data', dataName='voc', topK=1, num_classes=20):
+        model = self.model
+        device = self.device
+        model.eval()
 
-    #     similarity_matrix = []
-    #     img_list = []
+        similarity_matrix = []
+        img_list = []
 
-    #     with torch.no_grad():
-    #         for t, (images, labels, names) in enumerate(loader):
-    #             images = images.to(device, dtype=torch.float32)
-    #             labels = labels.to(device, dtype=torch.long)
-    #             img_list.extend(list(names))
+        with torch.no_grad():
+            for t, (images, labels, names) in enumerate(loader):
+                images = images.to(device, dtype=torch.float32)
+                labels = labels.to(device, dtype=torch.long)
+                img_list.extend(list(names))
 
-    #             outputs, feat = model(images, return_feat=True)
-    #             outputs = F.softmax(outputs, dim=1)
+                outputs, feat = model(images, return_feat=True)
+                outputs = F.softmax(outputs, dim=1)
 
-    #             # outputs = outputs.cpu().numpy()
-    #             _, predictions = outputs.max(dim=1)
-    #             #TODO 用prediction还是label去计算prototype
+                # outputs = outputs.cpu().numpy()
+                _, predictions = outputs.max(dim=1)
+                #TODO 用prediction还是label去计算prototype
 
-    #             for i in range(images.shape[0]):
-    #                 clses = labels[i].unique().cpu().numpy()
-    #                 clses = clses[(clses != 0) & (clses != 255)]
-    #                 matrix = np.zeros((num_classes))
-    #                 for cls in clses:
-    #                     feat = F.interpolate(feat, size=labels.shape[-2:], mode='bilinear', align_corners=False)
-    #                     mask = labels[i] == cls
-    #                     gap_logit = feat[i, :, mask].mean(dim=1)
-    #                     # print(f"logit - {gap_logit}, cls - {model.module.cls.cls[0].weight.data[cls].squeeze().shape}")
-    #                     # gap_logit = outputs[i, cls][predictions[i] == cls].mean()
-    #                     matrix[cls] = F.cosine_similarity(gap_logit.unsqueeze(0), model.module.cls.cls[0].weight.data[cls].squeeze().unsqueeze(0), dim=1)
-    #                 similarity_matrix.append(matrix)
+                for i in range(images.shape[0]):
+                    clses = labels[i].unique().cpu().numpy()
+                    clses = clses[(clses != 0) & (clses != 255)]
+                    matrix = np.zeros((num_classes))
+                    for cls in clses:
+                        feat = F.interpolate(feat, size=labels.shape[-2:], mode='bilinear', align_corners=False)
+                        mask = labels[i] == cls
+                        gap_logit = feat[i, :, mask].mean(dim=1)
+                        # print(f"logit - {gap_logit}, cls - {model.module.cls.cls[0].weight.data[cls].squeeze().shape}")
+                        # gap_logit = outputs[i, cls][predictions[i] == cls].mean()
+                        matrix[cls] = F.cosine_similarity(gap_logit.unsqueeze(0), model.module.cls.cls[0].weight.data[cls].squeeze().unsqueeze(0), dim=1)
+                    similarity_matrix.append(matrix)
 
-    #     similarity_matrix = np.stack(similarity_matrix, axis=0)
-    #     cls_to_names = {}
+        similarity_matrix = np.stack(similarity_matrix, axis=0)
+        cls_to_names = {}
         
-    #     for cls in range(1, num_classes):
-    #         indices = np.argsort(similarity_matrix[:, cls])[-topK:][::-1].tolist()
-    #         cls_to_names[cls] = []
-    #         # print(f"class {cls} - {[similarity_matrix[idx, cls] for idx in indices]}")
-    #         for idx in indices:
-    #             name = img_list[idx].split('/')[-1].split('.')[0]
-    #             lbl = np.array(Image.open(f'data/voc/dataset/annotations/{name}.png'))
-    #             # print(f"class {cls} - {np.unique(lbl)}")
-    #             cls_to_names[cls].append(f"images/{name}.jpg")
-    #         # idxes.update(set(indices))
+        for cls in range(1, num_classes):
+            # indices = np.argsort(similarity_matrix[:, cls])[-topK:][::-1].tolist()
+            indices = np.argsort(similarity_matrix[:, cls])[:topK][::-1].tolist()
+            cls_to_names[cls] = []
+            # print(f"class {cls} - {[similarity_matrix[idx, cls] for idx in indices]}")
+            for idx in indices:
+                name = img_list[idx].split('/')[-1].split('.')[0]
+                lbl = np.array(Image.open(f'data/voc/dataset/annotations/{name}.png'))
+                # print(f"class {cls} - {np.unique(lbl)}")
+                cls_to_names[cls].append(f"images/{name}.jpg")
+            # idxes.update(set(indices))
 
-    #     # print(cls_to_names)
+        # print(cls_to_names)
 
-    #     images = np.load(f'{root}/{dataName}/split/train_list.npy')
-    #     cls_to_indexs = {}
-    #     for cl, names in cls_to_names.items():
-    #         cls_to_indexs[cl] = []
-    #         for name in names:
-    #             cls_to_indexs[cl].append(int(np.where(images[:,0] == name)[0][0]))
+        images = np.load(f'{root}/{dataName}/split/train_list.npy')
+        cls_to_indexs = {}
+        for cl, names in cls_to_names.items():
+            cls_to_indexs[cl] = []
+            for name in names:
+                cls_to_indexs[cl].append(int(np.where(images[:,0] == name)[0][0]))
 
-    #     print(cls_to_indexs)
+        print(cls_to_indexs)
         
-    #     # images = np.load(f'data/voc/split/train_ids.npy')
-    #     # images = [(f'data/voc/dataset/images/{i}.jpg', f'data/voc/dataset/annotations/{i}.jpg') for i, img in enumerate(images) if i in idxes]
-    #     # print(images)
+        # images = np.load(f'data/voc/split/train_ids.npy')
+        # images = [(f'data/voc/dataset/images/{i}.jpg', f'data/voc/dataset/annotations/{i}.jpg') for i, img in enumerate(images) if i in idxes]
+        # print(images)
 
-    #     return cls_to_indexs
+        return cls_to_indexs
 
 
     def load_state_dict(self, checkpoint, strict=True):
