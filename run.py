@@ -226,13 +226,15 @@ def main(opts):
 
     # train/val here
     while cur_epoch < opts.epochs and not opts.test:
-        if (cur_epoch + 1) % opts.distill_interval == 0 and model.EMA:
+        if cur_epoch % opts.distill_interval == 0 and model.EMA:
             dist.barrier()
             logger.info("updating feature distillation model...")
-            checkpoint = torch.load(checkpoint_path[:-3] + '_prev.pth', map_location="cpu")
-            state = {}
-            for k, v in checkpoint['model_state']["model"].items():
-                state[k[7:]] = v
+            # checkpoint = torch.load(checkpoint_path[:-3] + '_prev.pth', map_location="cpu")
+            # state = {}
+            # for k, v in checkpoint['model_state']["model"].items():
+            #     state[k[7:]] = v
+            # model.feature_model_old.load_state_dict(state)
+            state = {k[7:]: v for k, v in model.model.state_dict().items()}
             model.feature_model_old.load_state_dict(state)
 
         # =====  Train  =====
@@ -275,9 +277,9 @@ def main(opts):
                 current_HM = current_HM / world_size
                 current_MIoU = valid_score['Agg'][1]
                 if current_HM > best_HM:
-                    logger.print(f"Saving current best model!! HM - {current_HM}")
+                    logger.print(f"Current best model!! HM - {current_HM}")
                     best_HM = current_HM
-                    save_ckpt(checkpoint_path[:-3] + '_best.pth', model, cur_epoch)
+                    # save_ckpt(checkpoint_path[:-3] + '_best.pth', model, cur_epoch)
                 # if model.EMA and current_MIoU > prev_MIoU:
                 # save_ckpt(checkpoint_path[:-3] + '_prev.pth', model, cur_epoch)
 
@@ -285,9 +287,9 @@ def main(opts):
             logger.info(f"End of Validation {cur_epoch}/{opts.epochs}, Validation Loss={val_loss}")
             log_val(logger, val_metrics, val_score, val_loss, cur_epoch)
 
-        if rank == 0 and cur_epoch % opts.distill_interval == 0:
-            save_ckpt(checkpoint_path[:-3] + '_prev.pth', model, cur_epoch)
-            logger.info("[!] Distillation checkpoint saved.")
+        # if rank == 0 and cur_epoch % opts.distill_interval == 0:
+        #     save_ckpt(checkpoint_path[:-3] + '_prev.pth', model, cur_epoch)
+        #     logger.info("[!] Distillation checkpoint saved.")
 
         # =====  Save Model  =====
         if rank == 0 and (cur_epoch + 1) % opts.ckpt_interval == 0:  # save best model at the last iteration

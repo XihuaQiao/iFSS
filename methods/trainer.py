@@ -291,9 +291,9 @@ class Trainer:
                             del _outputs_old, _feat_old
                     if self.kd_criterion is not None:
                         #TODO 目前实验没有增加bg这一类别，同时考虑后续调整权重的可能
-                        old_classes = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]
-                        masks = torch.isin(labels.cpu(), torch.tensor(old_classes)).float()
-                        kd_loss = self.kd_loss * self.kd_criterion(outputs, outputs_old, masks)
+                        # old_classes = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]
+                        # masks = torch.isin(labels.cpu(), torch.tensor(old_classes)).float()
+                        kd_loss = self.kd_loss * self.kd_criterion(outputs, outputs_old)
                         # print(f"kd_loss - {kd_loss} - {self.kd_loss}")
                         rloss += kd_loss
                         del outputs_old
