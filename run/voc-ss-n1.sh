@@ -27,7 +27,7 @@ iter=2000
 path=checkpoints/step/${task}-${ds}
 for ns in 1; do  # shot 1/2/5 images
   for is in 0 1 2; do  # image samples
-    inc_par="--ishot ${is} --input_mix novel --val_interval 4 --ckpt_interval 5"
+    inc_par="--ishot ${is} --input_mix novel --val_interval 8 --ckpt_interval 5"
 
       # exp --method FT --name FT --iter ${iter} --lr ${lr} ${gen_par} ${inc_par} --step 1 --nshot ${ns} --step_ckpt ${path}/FT_0.pth
 

@@ -7,6 +7,7 @@ from .transform import Compose, RandomScale, RandomCrop, RandomHorizontalFlip, T
 import random
 from .utils import Subset, MyImageFolder, RandomDataset
 import json
+import math
 
 TRAIN_CV = 0.8
 
@@ -75,6 +76,13 @@ def get_dataset(opts, task, train=True):
             print(f"loaded memory from {opts.memory_path}")
             for k in memory.keys():
                 memory[k] = memory[k][:opts.nshot]
+            # with open(f"checkpoints/step/15-5-voc/minK-memory.json") as file:
+            #     min_memory = json.load(file)
+            # with open(f"checkpoints/step/15-5-voc/topK-memory.json") as file:
+            #     top_memory = json.load(file)
+            # memory = {}
+            # for k in min_memory.keys():
+            #     memory[k] = min_memory[k][:math.ceil(opts.nshot / 2)] + top_memory[k][math.ceil(opts.nshot / 2):opts.nshot]
         else:
             memory = None
         if opts.cross_val:

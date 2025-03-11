@@ -38,8 +38,13 @@ class KnowledgeDistillationLoss(nn.Module):
         self.reduction = reduction
         self.alpha = alpha
 
-    def forward(self, inputs, targets):
+    def forward(self, inputs, targets, masks=None):
         inputs = inputs.narrow(1, 0, targets.shape[1])
+
+        if masks is not None:
+            masks = masks.unsqueeze(1)
+            inputs = inputs * masks.to(inputs.device)
+            targets = targets * masks.to(inputs.device)
 
         outputs = torch.log_softmax(inputs, dim=1)
         targets = torch.softmax(targets / self.alpha, dim=1)
@@ -317,6 +322,8 @@ def MyCrossEntropy(inputs, targets_a, targets_b, lam, num_classes=16, ignore_ind
     
     return loss
 
+
+# https://github.com/huggingface/transformers/blob/main/src/transformers/models/clip/modeling_clip.py#L1404
 
 
 class prototypeContrastLoss(nn.Module):
