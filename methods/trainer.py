@@ -281,14 +281,15 @@ class Trainer:
                 # xxx Distillation/Regularization Losses
                 if self.model_old is not None:
                     with torch.no_grad():
-                        outputs_old, feat_old, body_old, embedding_old = self.model_old(images, lam=lam, return_feat=True, return_body=True, return_embedding=True)
-                        if cur_epoch > val_interval and self.EMA:
-                            _outputs_old, _feat_old, _, _ = self.feature_model_old(images, lam=lam, return_feat=True, return_body=True, return_embedding=True)
-                            alpha = 0.5
-                            feat_old = alpha * _feat_old + (1 - alpha) * feat_old
-                            beta = 0
-                            outputs_old = beta * _outputs_old + (1 - beta) * outputs_old
-                            del _outputs_old, _feat_old
+                        outputs_old, _, body_old, embedding_old = self.model_old(images, lam=lam, return_feat=True, return_body=True, return_embedding=True)
+                        _, feat_old = self.feature_model_old(images, lam=lam, return_feat=True)
+                        # if cur_epoch > val_interval and self.EMA:
+                        #     _outputs_old, _feat_old, _, _ = self.feature_model_old(images, lam=lam, return_feat=True, return_body=True, return_embedding=True)
+                        #     alpha = 0.5
+                        #     feat_old = alpha * _feat_old + (1 - alpha) * feat_old
+                        #     beta = 0
+                        #     outputs_old = beta * _outputs_old + (1 - beta) * outputs_old
+                        #     del _outputs_old, _feat_old
                     if self.kd_criterion is not None:
                         #TODO 目前实验没有增加bg这一类别，同时考虑后续调整权重的可能
                         # old_classes = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]

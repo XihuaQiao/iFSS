@@ -227,15 +227,19 @@ def main(opts):
     # train/val here
     while cur_epoch < opts.epochs and not opts.test:
         if cur_epoch % opts.distill_interval == 0 and model.EMA:
-            dist.barrier()
-            logger.info("updating feature distillation model...")
-            # checkpoint = torch.load(checkpoint_path[:-3] + '_prev.pth', map_location="cpu")
-            # state = {}
-            # for k, v in checkpoint['model_state']["model"].items():
-            #     state[k[7:]] = v
+            # dist.barrier()
+            # logger.info("updating feature distillation model...")
+            # state = {k[7:]: v for k, v in model.model.state_dict().items()}
             # model.feature_model_old.load_state_dict(state)
-            state = {k[7:]: v for k, v in model.model.state_dict().items()}
-            model.feature_model_old.load_state_dict(state)
+
+            # 先权重融合模型后计算
+            dist.barrier()
+            logger.info("updating teacher model")
+            alpha = 0.9  # EMA 更新率，通常设置为 0.99 或 0.999
+
+            with torch.no_grad():  # EMA 更新不需要梯度计算
+                for param_old, param_new in zip(model.feature_model_old.parameters(), model.model.parameters()):
+                    param_old.data.mul_(alpha).add_((1 - alpha) * param_new.data)
 
         # =====  Train  =====
         start = time.time()

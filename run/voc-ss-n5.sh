@@ -21,8 +21,8 @@ extra=$4
 
 # export CUDA_VISIBLE_DEVICES=0
 
-gen_par="--task ${task} --dataset ${ds} --batch_size 8"
-lr=0.002
+gen_par="--task ${task} --dataset ${ds} --batch_size 7"
+lr=0.005
 iter=2000
 path=checkpoints/step/${task}-${ds}
 for ns in 5; do  # shot 1/2/5 images
