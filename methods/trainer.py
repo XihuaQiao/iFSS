@@ -281,8 +281,8 @@ class Trainer:
                 # xxx Distillation/Regularization Losses
                 if self.model_old is not None:
                     with torch.no_grad():
-                        outputs_old, _, body_old, embedding_old = self.model_old(images, lam=lam, return_feat=True, return_body=True, return_embedding=True)
-                        _, feat_old = self.feature_model_old(images, lam=lam, return_feat=True)
+                        outputs_old, feat_old, body_old, embedding_old = self.model_old(images, lam=lam, return_feat=True, return_body=True, return_embedding=True)
+                        # _, feat_old = self.feature_model_old(images, lam=lam, return_feat=True)
                         # if cur_epoch > val_interval and self.EMA:
                         #     _outputs_old, _feat_old, _, _ = self.feature_model_old(images, lam=lam, return_feat=True, return_body=True, return_embedding=True)
                         #     alpha = 0.5
@@ -293,12 +293,19 @@ class Trainer:
                     if self.kd_criterion is not None:
                         #TODO 目前实验没有增加bg这一类别，同时考虑后续调整权重的可能
                         # old_classes = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]
-                        # masks = torch.isin(labels.cpu(), torch.tensor(old_classes)).float()
-                        kd_loss = self.kd_loss * self.kd_criterion(outputs, outputs_old)
+                        new_classes = [16, 17, 18, 19, 20]
+                        masks = torch.isin(labels.cpu(), torch.tensor(new_classes)).float()
+                        kd_loss = self.kd_loss * self.kd_criterion(outputs, outputs_old, masks)
                         # print(f"kd_loss - {kd_loss} - {self.kd_loss}")
                         rloss += kd_loss
                         del outputs_old
                     if self.feat_criterion is not None:
+                        # old_classes = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]
+                        # new_classes = [16, 17, 18, 19, 20]
+                        # masks = torch.isin(labels.cpu(), torch.tensor(new_classes)).float()
+                        # masks = F.interpolate(masks.unsqueeze(1), size=feat.shape[-2:], mode='nearest')
+                        # feat = masks.to(device) * feat
+                        # feat_old = masks.to(device) * feat_old
                         feat_loss = self.feat_loss * self.feat_criterion(feat, feat_old)
                         del feat_old
                         if feat_loss <= CLIP:

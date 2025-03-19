@@ -235,10 +235,11 @@ def main(opts):
             # 先权重融合模型后计算
             dist.barrier()
             logger.info("updating teacher model")
-            alpha = 0.9  # EMA 更新率，通常设置为 0.99 或 0.999
+            alpha = 0.99  # EMA 更新率，通常设置为 0.99 或 0.999
 
             with torch.no_grad():  # EMA 更新不需要梯度计算
-                for param_old, param_new in zip(model.feature_model_old.parameters(), model.model.parameters()):
+                # for param_old, param_new in zip(model.feature_model_old.parameters(), model.model.parameters()):
+                for param_old, param_new in zip(model.model_old.parameters(), model.model.parameters()):
                     param_old.data.mul_(alpha).add_((1 - alpha) * param_new.data)
 
         # =====  Train  =====

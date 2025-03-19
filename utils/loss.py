@@ -30,6 +30,19 @@ class CosineKnowledgeDistillationLoss(nn.Module):
             outputs = loss
 
         return outputs
+    
+
+# class AttentionFeatureDistillationLoss(nn.Module):
+#     def __init__(self, alpha=0.5, temperature=2.0):
+#         super(AttentionFeatureDistillationLoss, self).__init__()
+#         self.alpha = alpha
+#         self.temperature = temperature
+
+#     def attention_compute(self, std_features, tch_features):
+
+
+#     def forward(self, std_features, tch_features, old_classes):
+
 
 
 class KnowledgeDistillationLoss(nn.Module):
@@ -37,19 +50,22 @@ class KnowledgeDistillationLoss(nn.Module):
         super().__init__()
         self.reduction = reduction
         self.alpha = alpha
+        # self.mask_encoding = 
 
     def forward(self, inputs, targets, masks=None):
         inputs = inputs.narrow(1, 0, targets.shape[1])
 
         if masks is not None:
             masks = masks.unsqueeze(1)
-            inputs = inputs * masks.to(inputs.device)
-            targets = targets * masks.to(inputs.device)
+            # inputs = inputs * masks.to(inputs.device)
+            # targets = targets * masks.to(inputs.device)
+            M = torch.ones_like(masks).to(inputs.device)
+            M[masks == 1] = 0.5
 
         outputs = torch.log_softmax(inputs, dim=1)
         targets = torch.softmax(targets / self.alpha, dim=1)
 
-        loss = -(outputs * targets).mean(dim=1) * (self.alpha ** 2)
+        loss = -(outputs * targets * M).mean(dim=1) * (self.alpha ** 2)
 
         if self.reduction == 'mean':
             outputs = torch.mean(loss)
@@ -386,3 +402,5 @@ class prototypeContrastLoss(nn.Module):
 #         return 
 
 #     def forward():
+
+
