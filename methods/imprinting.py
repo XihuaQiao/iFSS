@@ -112,6 +112,7 @@ class WeightImprinting(Trainer):
         # we have finished computing features, now collect and imprint!
         assert torch.any(count != 0), "Error, a novel class has no pixels!"
         features = F.normalize(sum_features, dim=1)
+        # print(f"features - {features.shape}")
         if self.normalize_weight:
             if self.compute_score:
                 scores = oi_acc / count.view(-1, 1)
@@ -121,6 +122,7 @@ class WeightImprinting(Trainer):
             else:
                 features += model.cls.cls[0].weight[1:].mean(dim=0).view(-1).detach()
         model.cls.imprint_weights_step(step=self.task.step, features=features)
+        
 
 
 class DynamicWI(Trainer):

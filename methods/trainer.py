@@ -3,9 +3,9 @@ from torch import distributed
 import torch.nn as nn
 import torch.nn.functional as F
 from torch.nn.parallel import DistributedDataParallel
-from utils.loss import KnowledgeDistillationLoss, CosineLoss, MyCrossEntropy, \
-    UnbiasedKnowledgeDistillationLoss, UnbiasedCrossEntropy, CosineKnowledgeDistillationLoss, PixelContrastLoss
+from utils.loss import *
 from utils.KD_loss import *
+from utils.AttentionLoss import SpatialGatingDistllationLoss, MetaWeightingDistillationLoss
 from .segmentation_module import make_model
 from modules.classifier import IncrementalClassifier, CosineClassifier, SPNetClassifier
 from .utils import get_scheduler, MeanReduction, printCUDA
@@ -63,12 +63,12 @@ class Trainer:
                 par.requires_grad = False
             self.model_old.to(device)
             self.model_old.eval()
-            if self.EMA:
-                self.feature_model_old = self.make_model(is_old= not model_old_as_new)
-                for par in self.feature_model_old.parameters():
-                    par.requires_grad = False
-                self.feature_model_old.to(device)
-                self.feature_model_old.eval()
+            # if self.EMA:
+            #     self.feature_model_old = self.make_model(is_old= not model_old_as_new)
+            #     for par in self.feature_model_old.parameters():
+            #         par.requires_grad = False
+            #     self.feature_model_old.to(device)
+            #     self.feature_model_old.eval()
 
         # xxx Set up optimizer
         self.train_only_novel = opts.train_only_novel
@@ -97,8 +97,17 @@ class Trainer:
         if opts.contrast_loss > 0:
             params.append({"params": filter(lambda p: p.requires_grad, self.model.proj_head.parameters()),
                             'lr': opts.lr * 0.1})
-            # for par in self.model.proj_head.parameters():
-            #     par.requires_grad = False
+            for par in self.model.proj_head.parameters():
+                par.requires_grad = False
+
+        # params.append({"params": filter(lambda p: p.requires_grad, [self.model.class_importance]),
+        #                 'lr': opts.lr})
+        # params.append({"params": filter(lambda p: p.requires_grad, [self.model.channel_importance]),
+        #                 'lr': opts.lr * 1000})
+        # params.append({"params": filter(lambda p: p.requires_grad, [self.model.spatial_importance]),
+        #                 'lr': opts.lr * 1000})
+        # params.append({"params": filter(lambda p: p.requires_grad, [self.model.centers]),
+        #                 'lr': opts.lr * 10})
 
         self.optimizer = torch.optim.SGD(params, lr=opts.lr, momentum=0.9, weight_decay=opts.weight_decay)
         self.scheduler = get_scheduler(opts, self.optimizer)
@@ -135,6 +144,8 @@ class Trainer:
             elif opts.cos_loss > 0:
                 self.feat_loss = opts.cos_loss
                 self.feat_criterion = CosineLoss()
+                # self.feat_criterion = SpatialGatingDistllationLoss(opts.n_feat, device=device)
+                # self.feat_criterion = MetaWeightingDistillationLoss(opts.n_feat, device=device)
         else:
             self.feat_criterion = None
 
@@ -154,19 +165,20 @@ class Trainer:
                 if opts.ckd:
                     self.kd_criterion = CosineKnowledgeDistillationLoss(reduction='mean')
                 else:
-                    self.kd_criterion = KnowledgeDistillationLoss(reduction="mean", alpha=opts.kd_alpha)
+                    self.kd_criterion = KnowledgeDistillationLoss(reduction="mean", alpha=opts.kd_alpha, device=device)
                 self.kd_loss = opts.loss_kd
             if opts.mib_kd > 0:
                 self.kd_loss = opts.mib_kd
                 self.kd_criterion = UnbiasedKnowledgeDistillationLoss(reduction="mean")
         else:
             self.kd_criterion = None
+            torch.nn.CrossEntropyLoss
 
         # Body distillation
         if opts.loss_de > 0:
             assert self.model_old is not None, "Error, model old is None but distillation specified"
             self.de_loss = opts.loss_de
-            self.de_criterion = nn.MSELoss()
+            self.de_criterion = CosineLoss()
         else:
             self.de_criterion = None
 
@@ -174,6 +186,8 @@ class Trainer:
             self.mixup_criterion = MyCrossEntropy
         else:
             self.mixup_criterion = None
+
+        # self.centerLoss = CenterLoss(num_classes=21, feature_dim=256)
 
     def make_model(self, is_old=False):
         classifier, self.n_channels = self.get_classifier(is_old)
@@ -271,17 +285,28 @@ class Trainer:
                 rloss = torch.tensor([0.]).to(self.device)
                 cont_loss = torch.tensor([0.]).to(self.device)
 
+                if self.model_old is not None:
+                    with torch.no_grad():
+                        # 这个顺序，增量阶段不能使用mixup
+                        lam = None
+                        if self.mixup_criterion:
+                            outputs_old, feat_old, body_old, embedding_old, y_a, y_b, lam = self.model_old(images, target=labels, return_feat=True, return_body=True, return_embedding=True)
+                        else:
+                            outputs_old, feat_old, body_old, embedding_old = self.model_old(images, return_feat=True, return_body=True, return_embedding=True)
+
                 optim.zero_grad()
-                lam = None
+                # if self.mixup_criterion:
+                #     outputs, feat, body, embedding, y_a, y_b, lam = model(images, target=labels, return_feat=True, return_body=True, return_embedding=True)
+                # else:
+                    # outputs, feat, body, embedding, channel_weights = model(images, return_feat=True, return_body=True, return_embedding=True, old_features=feat_old)
                 if self.mixup_criterion:
-                    outputs, feat, body, embedding, y_a, y_b, lam = model(images, target=labels, return_feat=True, return_body=True, return_embedding=True)
+                    outputs, feat, body, embedding = model(images, lam=lam, return_feat=True, return_body=True, return_embedding=True)
                 else:
                     outputs, feat, body, embedding = model(images, return_feat=True, return_body=True, return_embedding=True)
+                    # outputs, feat, body, embedding, weight = model(images, lam=lam, return_feat=True, return_body=True, return_embedding=True, old_features=feat_old)
 
                 # xxx Distillation/Regularization Losses
                 if self.model_old is not None:
-                    with torch.no_grad():
-                        outputs_old, feat_old, body_old, embedding_old = self.model_old(images, lam=lam, return_feat=True, return_body=True, return_embedding=True)
                         # _, feat_old = self.feature_model_old(images, lam=lam, return_feat=True)
                         # if cur_epoch > val_interval and self.EMA:
                         #     _outputs_old, _feat_old, _, _ = self.feature_model_old(images, lam=lam, return_feat=True, return_body=True, return_embedding=True)
@@ -293,9 +318,9 @@ class Trainer:
                     if self.kd_criterion is not None:
                         #TODO 目前实验没有增加bg这一类别，同时考虑后续调整权重的可能
                         # old_classes = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]
-                        new_classes = [16, 17, 18, 19, 20]
-                        masks = torch.isin(labels.cpu(), torch.tensor(new_classes)).float()
-                        kd_loss = self.kd_loss * self.kd_criterion(outputs, outputs_old, masks)
+                        # new_classes = [16, 17, 18, 19, 20]
+                        # masks = torch.isin(labels.cpu(), torch.tensor(new_classes)).float()
+                        kd_loss = self.kd_loss * self.kd_criterion(outputs, outputs_old)
                         # print(f"kd_loss - {kd_loss} - {self.kd_loss}")
                         rloss += kd_loss
                         del outputs_old
@@ -307,6 +332,7 @@ class Trainer:
                         # feat = masks.to(device) * feat
                         # feat_old = masks.to(device) * feat_old
                         feat_loss = self.feat_loss * self.feat_criterion(feat, feat_old)
+                        # print(f"feature cos loss - {feat_loss}")
                         del feat_old
                         if feat_loss <= CLIP:
                             rloss += feat_loss
@@ -314,6 +340,7 @@ class Trainer:
                             print(f"Warning, feature loss is {feat_loss}! Term ignored")
                     if self.de_criterion is not None:
                         de_loss = self.de_loss * self.de_criterion(body, body_old)
+                        # print(f"de_loss - {de_loss}")
                         del body_old
                         rloss += de_loss
                     if self.embedding_criterion is not None:
@@ -323,7 +350,8 @@ class Trainer:
 
                 if self.contrast_criterion is not None:
                     tmp = self.contrast_loss * self.contrast_criterion(labels, outputs, embedding)
-                    cont_loss += tmp
+                    # print(f"contrast_loss - {tmp}")
+                    rloss += tmp
 
                 if self.mixup_criterion is not None:
                     loss = self.mixup_criterion(outputs, y_a, y_b, lam, num_classes=21, ignore_index=255, reduction='mean')
@@ -336,6 +364,10 @@ class Trainer:
                 else:
                     print(f"Warning, rloss is {rloss}! Term ignored")
                     loss_tot += loss
+
+                # center_loss = self.centerLoss(feat, labels, model.module.cls.get_centers())
+                # print(f"center_loss - {center_loss}")
+                # loss_tot += center_loss
 
                 if cont_loss <= CLIP:
                     loss_tot += cont_loss
@@ -555,13 +587,13 @@ class Trainer:
         if self.born_again and strict:
             self.model_old.load_state_dict(state)
             self.model.load_state_dict(model_state)
-            if self.EMA:
-                self.feature_model_old.load_state_dict(state)
+            # if self.EMA:
+            #     self.feature_model_old.load_state_dict(state)
         else:
             if self.need_model_old and not strict:
                 self.model_old.load_state_dict(state, strict=not self.dist_warm_start)  # we are loading the old model
-                if self.EMA:
-                    self.feature_model_old.load_state_dict(state, strict=not self.dist_warm_start)
+                # if self.EMA:
+                #     self.feature_model_old.load_state_dict(state, strict=not self.dist_warm_start)
 
             if 'module.cls.class_emb' in state and not strict:  # if distributed
                 # remove from checkpoint since SPNClassifier is not incremental

@@ -111,7 +111,7 @@ class ResNet(nn.Module):
         s = 2 if d == 1 and block_id == 0 and mod_id > 0 else 1
         return s, d
 
-    def forward(self, x, target=None, lam=None):
+    def forward(self, x, target=None, lam=None, new_classes=[16, 17, 18, 19, 20]):
         y_a, y_b = None, None
         outs = list()
 
@@ -120,25 +120,25 @@ class ResNet(nn.Module):
                 self.layer_mix = random.randint(0, 2)
 
             if self.layer_mix == 0:
-                x, y_a, y_b, lam = mixup_data(x, target, self.mixup_alpha, lam=lam)
+                x, y_a, y_b, lam = mixup_data(x, target, self.mixup_alpha, lam=lam, new_classes=new_classes)
             
             outs.append(self.mod1(x))
             outs.append(self.mod2(outs[-1]))
 
             if self.layer_mix == 1:
-                outs[-1], y_a, y_b, lam = mixup_data(outs[-1], target, self.mixup_alpha, lam=lam)
+                outs[-1], y_a, y_b, lam = mixup_data(outs[-1], target, self.mixup_alpha, lam=lam, new_classes=new_classes)
             outs.append(self.mod3(outs[-1]))
 
             if self.layer_mix == 2:
-                outs[-1], y_a, y_b, lam = mixup_data(outs[-1], target, self.mixup_alpha, lam=lam)
+                outs[-1], y_a, y_b, lam = mixup_data(outs[-1], target, self.mixup_alpha, lam=lam, new_classes=new_classes)
             outs.append(self.mod4(outs[-1]))
 
             if self.layer_mix == 3:
-                outs[-1], y_a, y_b, lam = mixup_data(outs[-1], target, self.mixup_alpha, lam=lam)
+                outs[-1], y_a, y_b, lam = mixup_data(outs[-1], target, self.mixup_alpha, lam=lam, new_classes=new_classes)
             outs.append(self.mod5(outs[-1]))
 
             if self.layer_mix == 4:
-                outs[-1], y_a, y_b, lam = mixup_data(outs[-1], target, self.mixup_alpha, lam=lam)
+                outs[-1], y_a, y_b, lam = mixup_data(outs[-1], target, self.mixup_alpha, lam=lam, new_classes=new_classes)
 
         else:
             outs.append(self.mod1(x))           # 64 * H/4 * W/4

@@ -21,13 +21,13 @@ extra=$4
 
 # export CUDA_VISIBLE_DEVICES=0
 
-gen_par="--task ${task} --dataset ${ds} --batch_size 7"
-lr=0.005
+gen_par="--task ${task} --dataset ${ds} --batch_size 9"
+lr=0.007
 iter=2000
 path=checkpoints/step/${task}-${ds}
 for ns in 5; do  # shot 1/2/5 images
   for is in 0 1 2; do  # image samples
-    inc_par="--ishot ${is} --input_mix novel --val_interval 10 --ckpt_interval 5"
+    inc_par="--ishot ${is} --input_mix novel --val_interval 5 --ckpt_interval 5"
 
       # exp --method FT --name FT --iter ${iter} --lr ${lr} ${gen_par} ${inc_par} --step 1 --nshot ${ns} --step_ckpt ${path}/FT_0.pth
 

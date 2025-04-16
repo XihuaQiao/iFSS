@@ -46,26 +46,44 @@ class CosineKnowledgeDistillationLoss(nn.Module):
 
 
 class KnowledgeDistillationLoss(nn.Module):
-    def __init__(self, reduction='mean', alpha=1.):
+    def __init__(self, num_classes=21, reduction='mean', alpha=1., device=None):
         super().__init__()
         self.reduction = reduction
         self.alpha = alpha
-        # self.mask_encoding = 
+        # self.class_importance = nn.Parameter(torch.ones(num_classes) / num_classes).to(device)
+        self.epsilon = 1e-5
 
-    def forward(self, inputs, targets, masks=None):
+    def forward(self, inputs, targets, class_weights=None, masks=None):
         inputs = inputs.narrow(1, 0, targets.shape[1])
 
-        if masks is not None:
-            masks = masks.unsqueeze(1)
-            # inputs = inputs * masks.to(inputs.device)
-            # targets = targets * masks.to(inputs.device)
-            M = torch.ones_like(masks).to(inputs.device)
-            M[masks == 1] = 0.5
+        # if masks is not None:
+        #     masks = masks.unsqueeze(1)
+        #     # inputs = inputs * masks.to(inputs.device)
+        #     # targets = targets * masks.to(inputs.device)
+        #     M = torch.ones_like(masks).to(inputs.device)
+        #     M[masks == 1] = 0.5
+
+        # logit_diff = (inputs - targets) ** 2  # [num_classes]
+
+        # # print(self.class_importance.grad)
+        
+        # # 计算逆相关权重（差异越大，权重越高）
+        # # 这里采用差异直接作为权重，而不是倒数，因为我们希望关注差异大的类别
+        # raw_weights = torch.einsum('c,bchw->bhw', class_importance, logit_diff).unsqueeze(1)
+
+        # # print(f"raw_weights - {raw_weights.shape}")
+        
+        # # 应用温度缩放和softmax归一化
+        # class_weights = torch.softmax(raw_weights / self.alpha, dim=0).unsqueeze(0)
 
         outputs = torch.log_softmax(inputs, dim=1)
         targets = torch.softmax(targets / self.alpha, dim=1)
 
-        loss = -(outputs * targets * M).mean(dim=1) * (self.alpha ** 2)
+        if class_weights is not None:
+            loss = -(outputs * targets * class_weights).mean(dim=1) * (self.alpha ** 2)   # [B, C, H, W]
+        else:
+            loss = -(outputs * targets).mean(dim=1) * (self.alpha ** 2)   # [B, C, H, W]
+        # loss = F.kl_div(outputs, targets, reduction='none').mean(dim=1) * (self.alpha ** 2)
 
         if self.reduction == 'mean':
             outputs = torch.mean(loss)
@@ -142,9 +160,16 @@ class CosineLoss(nn.Module):
         super().__init__()
         self.reduction = reduction
         self.crit = nn.CosineSimilarity(dim=1)
+        # self.crit = nn.CosineSimilarity(dim=-1)
 
-    def forward(self, x, y):
+    def forward(self, x, y, weights=None):
+        # loss = 1 - self.crit(x.flatten(-2), y.flatten(-2))
         loss = 1 - self.crit(x, y)
+        # print(f"loss - {loss.shape}")
+        # print(f"loss - {loss.shape}, weights - {channel_weights.shape}")
+        
+        if weights is not None:
+            loss = loss * weights
 
         if self.reduction == 'mean':
             loss = torch.mean(loss)
@@ -153,6 +178,24 @@ class CosineLoss(nn.Module):
         else:
             loss = loss
         return loss
+
+# class CosineLoss(nn.Module):
+#     def __init__(self, reduction='mean'):
+#         super().__init__()
+#         self.reduction = reduction
+#         self.crit = nn.CosineSimilarity(dim=2)
+
+#     def forward(self, x, y, channel_weights):
+#         loss = 1 - self.crit(x.flatten(-2), y.flatten(-2))
+#         print(f"loss - {loss.shape}, channel_weights - {channel_weights.shape}")
+
+#         if self.reduction == 'mean':
+#             loss = torch.mean(loss)
+#         elif self.reduction == 'sum':
+#             loss = torch.sum(loss)
+#         else:
+#             loss = loss
+#         return loss
     
 
 # https://github.com/tfzhou/ContrastiveSeg/blob/main/lib/loss/loss_contrast.py
@@ -329,12 +372,15 @@ def MyCrossEntropy(inputs, targets_a, targets_b, lam, num_classes=16, ignore_ind
     nll_loss_a = - (targets_a * log_probs).sum(dim=1) * mask_a
     nll_loss_b = - (targets_b * log_probs).sum(dim=1) * mask_b
 
+    nll_loss_a = torch.einsum('bhw,b->bhw', nll_loss_a, lam)
+    nll_loss_b = torch.einsum('bhw,b->bhw', nll_loss_b, 1-lam)
+
     if reduction == 'mean':
-        loss = lam * nll_loss_a.sum() / mask_a.sum() + (1 - lam) * nll_loss_b.sum() / mask_b.sum()
+        loss = nll_loss_a.sum() / mask_a.sum() + nll_loss_b.sum() / mask_b.sum()
     elif reduction == 'sum':
-        loss = lam * nll_loss_a.sum() + (1 - lam) * nll_loss_b.sum()
+        loss = nll_loss_a.sum() + nll_loss_b.sum()
     elif reduction == 'none':
-        loss = lam * nll_loss_a + (1 - lam) * nll_loss_b
+        loss = nll_loss_a + nll_loss_b
     
     return loss
 
@@ -389,6 +435,81 @@ class prototypeContrastLoss(nn.Module):
             loss += F.cross_entropy(logits, lbls, reduction='mean')
         
         return loss
+    
+# import torch
+# import torch.nn as nn
+
+# class CenterLoss(nn.Module):
+#     def __init__(self, num_classes, feature_dim, alpha=0.01):
+#         super(CenterLoss, self).__init__()
+#         self.num_classes = num_classes
+#         self.feature_dim = feature_dim
+#         self.alpha = alpha
+#         # 初始化类别中心
+
+#     def initCenters(self, prototypes):
+#         self.centers = prototypes
+
+#     def forward(self, features, labels):
+#         # 计算中心损失
+#         batch_size = features.size(0)
+#         centers_batch = self.centers[labels]
+#         loss = torch.sum((features - centers_batch) ** 2) / 2.0 / batch_size
+#         # 更新类别中心
+#         diff = features - centers_batch
+#         for i in range(batch_size):
+#             self.centers[labels[i]] = self.centers[labels[i]] + self.alpha * diff[i]
+#         return loss
+    
+# import torch
+# import torch.nn as nn
+
+class CenterLoss(nn.Module):
+    def __init__(self, num_classes, feature_dim):
+        """
+        Fixed Center Loss with vectorized computation.
+
+        Args:
+            num_classes (int): Number of classes.
+            feature_dim (int): Dimension of the feature vector (D).
+            centers (torch.Tensor): Fixed class centers [num_classes, feature_dim].
+        """
+        super(CenterLoss, self).__init__()
+        self.num_classes = num_classes
+        self.feature_dim = feature_dim
+        # self.centers = centers  # [num_classes, feature_dim]
+
+    def forward(self, features, labels, centers):
+        """
+        Compute the center loss with fixed centers (vectorized).
+
+        Args:
+            features (torch.Tensor): Feature map with shape [B, D, H, W].
+            labels (torch.Tensor): Pixel-wise labels with shape [B, H, W].
+
+        Returns:
+            torch.Tensor: Center loss scalar value.
+        """
+        B, D, H, W = features.shape
+
+        # 将特征图展平为 [B*H*W, D]，标签展平为 [B*H*W]
+        features = F.interpolate(features, size=labels.shape[-2:], mode='bilinear', align_corners=False)
+        features_flat = features.permute(0, 2, 3, 1).reshape(-1, D)  # [B*H*W, D]
+        labels_flat = labels.reshape(-1)  # [B*H*W]
+
+        mask = (labels_flat != 0) and (labels_flat != 255)
+        features_flat = features_flat[mask]
+        labels_flat = labels_flat[mask]
+
+        # 获取对应类别的中心向量 [B*H*W, D]
+        centers_batch = centers[labels_flat]  # [B*H*W, D]
+
+        # 计算所有像素的欧氏距离
+        loss = torch.mean(torch.sum((features_flat - centers_batch) ** 2, dim=1))  # 标量
+
+        return loss
+
+
 
 
 # class GoogleContrastiveLoss(nn.Module):

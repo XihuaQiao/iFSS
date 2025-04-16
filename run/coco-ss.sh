@@ -3,14 +3,14 @@
 export CUDA_VISIBLE_DEVICES=$1
 port=$(python get_free_port.py)
 echo ${port}
-alias exp="python -m torch.distributed.launch --master_port ${port} --nproc_per_node=1 run.py --num_workers 4"
+alias exp="python -m torch.distributed.launch --master_port ${port} --nproc_per_node=4 run.py --num_workers 4"
 shopt -s expand_aliases
 
 ds=coco
 task=$2
 
-exp --method FT --name FT --epochs 20 --lr 0.01 --batch_size 24
-exp --method COS --name COS --epochs 20 --lr 0.01 --batch_size 24
+# exp --method FT --name FT --epochs 20 --lr 0.01 --batch_size 24
+exp --method COS --name COS --epochs 20 --lr 0.01 --batch_size 5 --task ${task} --dataset ${ds}
 exp --method SPN --name SPN --epochs 20 --lr 0.01 --batch_size 24
 exp --method DWI --name DWI --epochs 20 --lr 0.01 --batch_size 24 --ckpt checkpoints/step/${task}-voc/COS_0.pth
 exp --method RT --name RT --epochs 40 --lr 0.01 --batch_size 24 --ckpt checkpoints/step/${task}-voc/FT_0.pth --born_again

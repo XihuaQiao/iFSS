@@ -343,6 +343,7 @@ def main(opts):
     del checkpoint
 
     if opts.memory:
+        #TODO
         memories = model.memory(train_loader, topK=5, num_classes=16)
         with open(opts.ckpt.replace('pth', 'json'), 'w') as file:
             json.dump(memories, file)

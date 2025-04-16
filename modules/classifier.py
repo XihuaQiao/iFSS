@@ -53,6 +53,13 @@ class CosineClassifier(nn.Module):
         for lcl in classes:
             self.tot_classes += lcl
 
+    def get_centers(self):
+        prop_list = []
+        for conv in self.cls:
+            prop_list.append(conv.weight.squeeze())
+        centers = nn.Parameter(torch.concat(prop_list, dim=0).detach().clone())
+        return centers
+
     def forward(self, x):
         x = F.normalize(x, p=2, dim=1)
         out = []

@@ -105,9 +105,17 @@ class SegmentationModule(nn.Module):
         self.head_channels = head_channels
         self.proj_head = ProjectionHead(dim_in=head_channels, proj_dim=head_channels)
         self.cls = classifier
+        # print(f"classes - {self.cls.classes}")
+
+        num_classes = sum(self.cls.classes)
+        self.class_importance = nn.Parameter(torch.ones(num_classes) / num_classes)
+        self.channel_importance = nn.Parameter(torch.ones(head_channels))
+        self.spatial_importance = nn.Parameter(torch.ones(32, 32))
+
+        # self.centers = nn.Parameter(torch.randn(num_classes, head_channels))
 
     def forward(self, x, target=None, lam=None, use_classifier=True, return_feat=False, return_body=False, return_embedding=False,
-                only_classifier=False, only_head=False):
+                only_classifier=False, only_head=False, old_outputs=None, old_features=None):
         
         # print(self.cls.cls[0].weight.data)
 
@@ -116,16 +124,16 @@ class SegmentationModule(nn.Module):
         elif only_head:
             return self.cls(self.head(x))
         else:
-            x_b, y_a, y_b, lam = self.body(x, target=target, lam=lam)
+            x_b, y_a, y_b, lam = self.body(x, target=target, lam=lam)   # H/16 * W/16 * 2048
             if isinstance(x_b, dict):
                 x_b = x_b["out"]
-            out = self.head(x_b)
+            out = self.head(x_b)    # H/16 * W/16 * 256
 
             out_size = x.shape[-2:]
 
             if use_classifier:
                 sem_logits = self.cls(out)
-                sem_logits = functional.interpolate(sem_logits, size=out_size, mode="bilinear", align_corners=False)
+                sem_logits = functional.interpolate(sem_logits, size=out_size, mode="bilinear", align_corners=False)    # H * W * C
             else:
                 sem_logits = out
 
@@ -135,6 +143,35 @@ class SegmentationModule(nn.Module):
                         embedding = self.proj_head(out)
                         if target is not None:
                             return sem_logits, out, x_b, embedding, y_a, y_b, lam
+                        
+                        if old_outputs is not None:
+                            # print(f"in - {out.shape}, old - {old_features.shape}")
+                            # print(f"class_importance - {self.class_importance}")
+                            logit_diff = (sem_logits - old_outputs) ** 2  # [num_classes]
+
+                            # print(self.class_importance.grad)
+                            
+                            # 计算逆相关权重（差异越大，权重越高）
+                            # 这里采用差异直接作为权重，而不是倒数，因为我们希望关注差异大的类别
+                            raw_weights = torch.einsum('c,bchw->bhw', self.class_importance, logit_diff).unsqueeze(1)
+                            
+                            # 应用温度缩放和softmax归一化
+                            #TODO 这里的dim=0有问题？？？？
+                            # class_weights = torch.softmax(raw_weights, dim=0).unsqueeze(0)
+                            weights = torch.sigmoid(raw_weights)
+
+                            return sem_logits, out, x_b, embedding, weights
+                        if old_features is not None:
+                            stu = F.normalize(out, p=2, dim=1)
+                            old_features = F.normalize(old_features, p=2, dim=1)
+                            feat_diff = (stu - old_features) ** 2
+                            # print(f"feat_diff - {feat_diff.shape}")
+                            # print(f"spatial_importance - {torch.unique(self.spatial_importance)}")
+                            # raw_weights = torch.einsum('hw,bdhw->bd', self.spatial_importance, feat_diff)
+                            raw_weights = torch.einsum('d,bdhw->bhw', self.channel_importance, feat_diff)
+                            # raw_weights = torch.einsum('d, bdhw->bhw', self.channel_importance, torch.concat([stu, old_features], dim=1))
+                            weights = torch.sigmoid(raw_weights)
+                            return sem_logits, out, x_b, embedding, weights
                         return sem_logits, out, x_b, embedding
                     return sem_logits, out, x_b
                 return sem_logits, out

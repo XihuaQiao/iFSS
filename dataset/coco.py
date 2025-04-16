@@ -18,6 +18,8 @@ class COCO(data.Dataset):
         ds_root = osp.join(root, base_dir)
         splits_dir = osp.join(ds_root, 'split')
 
+        self.train = train
+
         if train:
             split_f = osp.join(splits_dir, 'train.txt')
             folder = 'train2017'
@@ -62,7 +64,16 @@ class COCO(data.Dataset):
         if self.target_transform is not None:
             target = self.target_transform(target)
 
-        return img, target
+        if self.train:
+            return img, target, 'images/train2017/' + self.images[index][0].split('/')[-1]
+        else:
+            return img, target, 'images/val2017/' + self.images[index][0].split('/')[-1]
+
+    def getName(self, index):
+        if self.train:
+            return 'images/train2017' + self.images[index][0].split('/')[-1]
+        else:
+            return 'images/val2017/' + self.images[index][0].split('/')[-1]
 
     def __len__(self):
         return len(self.images)
