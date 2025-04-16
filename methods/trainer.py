@@ -300,7 +300,10 @@ class Trainer:
                 # else:
                     # outputs, feat, body, embedding, channel_weights = model(images, return_feat=True, return_body=True, return_embedding=True, old_features=feat_old)
                 if self.mixup_criterion:
-                    outputs, feat, body, embedding = model(images, lam=lam, return_feat=True, return_body=True, return_embedding=True)
+                    if self.model_old:
+                        outputs, feat, body, embedding = model(images, lam=lam, return_feat=True, return_body=True, return_embedding=True)
+                    else:
+                        outputs, feat, body, embedding, y_a, y_b, lam = model(images, target=labels, return_feat=True, return_body=True, return_embedding=True)
                 else:
                     outputs, feat, body, embedding = model(images, return_feat=True, return_body=True, return_embedding=True)
                     # outputs, feat, body, embedding, weight = model(images, lam=lam, return_feat=True, return_body=True, return_embedding=True, old_features=feat_old)
