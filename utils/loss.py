@@ -46,6 +46,7 @@ class CosineKnowledgeDistillationLoss(nn.Module):
 
 
 class KnowledgeDistillationLoss(nn.Module):
+    #TODO
     def __init__(self, num_classes=21, reduction='mean', alpha=1., device=None):
         super().__init__()
         self.reduction = reduction

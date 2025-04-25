@@ -53,7 +53,7 @@ if __name__ == '__main__':
     image = Image.open(opts.image).convert('RGB')
     image = demo_transform(image).unsqueeze(0).to(model.device)
 
-    outputs = model.model(image)
+    outputs, _, _, _ = model.model(image)
     _, prediction = outputs.max(dim=1)
     prediction = prediction.cpu().numpy()
 

@@ -111,7 +111,7 @@ class ResNet(nn.Module):
         s = 2 if d == 1 and block_id == 0 and mod_id > 0 else 1
         return s, d
 
-    def forward(self, x, target=None, lam=None, new_classes=[16, 17, 18, 19, 20]):
+    def forward(self, x, target=None, lam=None, new_classes=None):
         y_a, y_b = None, None
         outs = list()
 

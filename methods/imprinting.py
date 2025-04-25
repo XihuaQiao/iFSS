@@ -89,7 +89,7 @@ class WeightImprinting(Trainer):
                     images = images.to(self.device, dtype=torch.float32)
                     labels = labels.to(self.device, dtype=torch.long)
 
-                    out = model(images.unsqueeze(0), use_classifier=False)  # .squeeze_(0)
+                    out, _, _, _ = model(images.unsqueeze(0), use_classifier=False)  # .squeeze_(0)
                     out_size = images.shape[-2:]
                     out = F.interpolate(out, size=out_size, mode="bilinear", align_corners=False).squeeze_(0)
                     # labels = F.interpolate(labels.float().view(1, 1, labels.shape[0], labels.shape[1]),

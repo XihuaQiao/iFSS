@@ -19,6 +19,8 @@ import os.path as osp
 import random
 from PIL import Image
 
+from utils.utils import print_gpu_memory
+
 CLIP = 10
 
 
@@ -37,6 +39,9 @@ class Trainer:
         self.n_channels = -1  # features size, will be initialized in make model
         self.model = self.make_model()
         self.model = self.model.to(device)
+
+        # print("after make model")
+        # print_gpu_memory()
 
         self.distributed = False
         self.model_old = None
@@ -96,9 +101,10 @@ class Trainer:
 
         if opts.contrast_loss > 0:
             params.append({"params": filter(lambda p: p.requires_grad, self.model.proj_head.parameters()),
-                            'lr': opts.lr * 0.1})
-            for par in self.model.proj_head.parameters():
-                par.requires_grad = False
+                            'lr': opts.lr * 10})
+        # else:
+        #     for par in self.model.proj_head.parameters():
+        #         par.requires_grad = False
 
         # params.append({"params": filter(lambda p: p.requires_grad, [self.model.class_importance]),
         #                 'lr': opts.lr})
@@ -260,11 +266,11 @@ class Trainer:
 
         device = self.device
         model = self.model
-        criterion = self.criterion
+        # criterion = self.criterion
 
         epoch_loss = 0.0
         reg_loss = 0.0
-        contrast_loss = 0.0
+        # contrast_loss = 0.0
         interval_loss = 0.0
 
         model.train()
@@ -272,6 +278,8 @@ class Trainer:
             model.module.body.eval()
         if self.opts.lr_head == 0 and self.opts.bn_momentum == 0:
             model.module.head.eval()
+
+        # print_gpu_memory()
 
         cur_step = 0
         for iteration in range(n_iter):
@@ -285,27 +293,32 @@ class Trainer:
                 rloss = torch.tensor([0.]).to(self.device)
                 cont_loss = torch.tensor([0.]).to(self.device)
 
+                ret_feat = True if self.feat_criterion is not None else False
+                ret_body = True if self.de_criterion is not None else False
+                ret_embd = True if self.contrast_criterion is not None else False
+
                 if self.model_old is not None:
                     with torch.no_grad():
                         # 这个顺序，增量阶段不能使用mixup
                         lam = None
                         if self.mixup_criterion:
-                            outputs_old, feat_old, body_old, embedding_old, y_a, y_b, lam = self.model_old(images, target=labels, return_feat=True, return_body=True, return_embedding=True)
+                            outputs_old, feat_old, body_old, embedding_old, y_a, y_b, lam = self.model_old(images, target=labels, return_feat=ret_feat, return_body=ret_body, return_embedding=ret_embd)
                         else:
-                            outputs_old, feat_old, body_old, embedding_old = self.model_old(images, return_feat=True, return_body=True, return_embedding=True)
+                            outputs_old, feat_old, body_old, embedding_old = self.model_old(images, return_feat=ret_feat, return_body=ret_body, return_embedding=ret_embd)
 
                 optim.zero_grad()
                 # if self.mixup_criterion:
                 #     outputs, feat, body, embedding, y_a, y_b, lam = model(images, target=labels, return_feat=True, return_body=True, return_embedding=True)
                 # else:
                     # outputs, feat, body, embedding, channel_weights = model(images, return_feat=True, return_body=True, return_embedding=True, old_features=feat_old)
+
                 if self.mixup_criterion:
                     if self.model_old:
-                        outputs, feat, body, embedding = model(images, lam=lam, return_feat=True, return_body=True, return_embedding=True)
+                        outputs, feat, body, embedding = model(images, lam=lam, return_feat=ret_feat, return_body=ret_body, return_embedding=ret_embd)
                     else:
-                        outputs, feat, body, embedding, y_a, y_b, lam = model(images, target=labels, return_feat=True, return_body=True, return_embedding=True)
+                        outputs, feat, body, embedding, y_a, y_b, lam = model(images, target=labels, return_feat=ret_feat, return_body=ret_body, return_embedding=ret_embd)
                 else:
-                    outputs, feat, body, embedding = model(images, return_feat=True, return_body=True, return_embedding=True)
+                        outputs, feat, body, embedding = model(images, return_feat=ret_feat, return_body=ret_body, return_embedding=ret_embd)
                     # outputs, feat, body, embedding, weight = model(images, lam=lam, return_feat=True, return_body=True, return_embedding=True, old_features=feat_old)
 
                 # xxx Distillation/Regularization Losses
@@ -352,12 +365,16 @@ class Trainer:
                         rloss += embedding_loss
 
                 if self.contrast_criterion is not None:
-                    tmp = self.contrast_loss * self.contrast_criterion(labels, outputs, embedding)
+                    cont_loss = self.contrast_loss * self.contrast_criterion(labels, outputs, embedding)
                     # print(f"contrast_loss - {tmp}")
-                    rloss += tmp
+                    if cont_loss <= CLIP:
+                        rloss += cont_loss
+                    else:
+                        print(f"Warning, cont_loss is {cont_loss}! Term ignored")
 
                 if self.mixup_criterion is not None:
-                    loss = self.mixup_criterion(outputs, y_a, y_b, lam, num_classes=21, ignore_index=255, reduction='mean')
+                    #TODO
+                    loss = self.mixup_criterion(outputs, y_a, y_b, lam, num_classes=61, ignore_index=255, reduction='mean')
                 else:
                     loss = self.reduction(F.cross_entropy(outputs, labels, ignore_index=255, reduction='none'), labels)
 
@@ -372,10 +389,6 @@ class Trainer:
                 # print(f"center_loss - {center_loss}")
                 # loss_tot += center_loss
 
-                if cont_loss <= CLIP:
-                    loss_tot += cont_loss
-                else:
-                    print(f"Warning, cont_loss is {cont_loss}! Term ignored")
 
                 # loss = kd_loss + feat_loss
                 # loss.backward()
@@ -387,7 +400,7 @@ class Trainer:
                 epoch_loss += loss.item()
                 reg_loss += rloss.item()
                 interval_loss += loss_tot.item()
-                contrast_loss += cont_loss.item()
+                # contrast_loss += cont_loss.item()
 
                 _, prediction = outputs.max(dim=1)  # B, H, W
                 labels = labels.cpu().numpy()
@@ -401,7 +414,7 @@ class Trainer:
                 #     print(f"embedding_loss - {embedding_loss}")
                         print(f"body_loss - {de_loss}")
                     if self.contrast_criterion:    
-                        print(f"contrast_loss - {tmp}")
+                        print(f"contrast_loss - {cont_loss}")
                     if self.feat_criterion:
                         print(f"feature loss - {feat_loss}")
 
@@ -409,7 +422,7 @@ class Trainer:
                     # print(f"loss_tot: {loss_tot}, class loss - {loss}, reg loss - {rloss}, contrast loss - {cont_loss}")
                     interval_loss = interval_loss / print_int
                     logger.info(f"Epoch {cur_epoch}, Batch {cur_step}/{n_iter}*{len(train_loader)},"
-                                f" Loss={interval_loss} RL={reg_loss/print_int} CL={contrast_loss/print_int}]")
+                                f" Loss={interval_loss:.4f} RL={reg_loss/print_int:.4f}]")
                     logger.debug(f"Loss made of: CE {loss}")
                     # visualization
                     if logger is not None:
@@ -417,31 +430,31 @@ class Trainer:
                         logger.add_scalar('Loss', interval_loss, x)
                     interval_loss = 0.0
                     reg_loss = 0.0
-                    contrast_loss = 0.0
+                    # contrast_loss = 0.0
 
                 del outputs, feat, body, embedding
 
         # collect statistics from multiple processes
         epoch_loss = torch.tensor(epoch_loss).to(self.device)
         reg_loss = torch.tensor(reg_loss).to(self.device)
-        contrast_loss = torch.tensor(contrast_loss).to(self.device)
+        # contrast_loss = torch.tensor(contrast_loss).to(self.device)
 
         torch.distributed.reduce(epoch_loss, dst=0)
         torch.distributed.reduce(reg_loss, dst=0)
-        torch.distributed.reduce(contrast_loss, dst=0)
+        # torch.distributed.reduce(contrast_loss, dst=0)
 
         if distributed.get_rank() == 0:
             epoch_loss = epoch_loss / distributed.get_world_size() / (len(train_loader) * n_iter)
             reg_loss = reg_loss / distributed.get_world_size() / (len(train_loader) * n_iter)
-            contrast_loss = contrast_loss / distributed.get_world_size() / (len(train_loader) * n_iter)
+            # contrast_loss = contrast_loss / distributed.get_world_size() / (len(train_loader) * n_iter)
 
         # collect statistics from multiple processes
         if metrics is not None:
             metrics.synch(device)
 
-        logger.info(f"Epoch {cur_epoch}, Class Loss={epoch_loss}, Reg Loss={reg_loss}, Contrast Loss={contrast_loss}")
+        logger.info(f"Epoch {cur_epoch}, Class Loss={epoch_loss:.4f}, Reg Loss={reg_loss:.4f}")
 
-        return epoch_loss, reg_loss, contrast_loss
+        return epoch_loss, reg_loss
 
     def validate(self, loader, metrics, ret_samples_ids=None, novel=False):
         """Do validation and return specified samples"""
@@ -461,7 +474,7 @@ class Trainer:
                 images = images.to(device, dtype=torch.float32)
                 labels = labels.to(device, dtype=torch.long)
 
-                outputs = model(images)  # B, C, H, W
+                outputs, _, _, _ = model(images)  # B, C, H, W
                 if novel:
                     outputs[:, 1:-self.novel_classes] = -float("Inf")
 
@@ -526,7 +539,7 @@ class Trainer:
                 labels = labels.to(device, dtype=torch.long)
                 img_list.extend(list(names))
 
-                outputs, feat = model(images, return_feat=True)
+                outputs, feat, _, _ = model(images, return_feat=True)
                 outputs = F.softmax(outputs, dim=1)
 
                 # outputs = outputs.cpu().numpy()

@@ -12,7 +12,7 @@ name=$3
 extra=$4
 
 # exp --method FT --name FT --epochs 20 --lr 0.01 --batch_size 24
-exp --method COS --name ${name} --epochs 20 --lr 0.01 --batch_size 24 --task ${task} --dataset ${ds}
+exp --method COS --name ${name} --epochs 30 --lr 0.01 --batch_size 6 --task ${task} --dataset ${ds} --val_interval 5 ${extra}
 # exp --method SPN --name SPN --epochs 20 --lr 0.01 --batch_size 24
 # exp --method DWI --name DWI --epochs 20 --lr 0.01 --batch_size 24 --ckpt checkpoints/step/${task}-voc/COS_0.pth
 # exp --method RT --name RT --epochs 40 --lr 0.01 --batch_size 24 --ckpt checkpoints/step/${task}-voc/FT_0.pth --born_again

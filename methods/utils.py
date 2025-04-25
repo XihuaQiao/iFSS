@@ -36,7 +36,7 @@ def get_prototype(model, ds, cl, device, interpolate_label=True, return_all=Fals
     bkg_proto = []
     for img, lbl in ds:
         img, lbl = img.to(device), lbl.to(device)
-        out = model(img.unsqueeze(0), use_classifier=False)
+        out, _, _, _ = model(img.unsqueeze(0), use_classifier=False)
         if interpolate_label:  # to match output size
             lbl = F.interpolate(lbl.float().view(1, 1, lbl.shape[0], lbl.shape[1]),
                                 size=out.shape[-2:], mode="nearest").view(out.shape[-2:]).type(torch.uint8)

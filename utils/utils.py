@@ -261,3 +261,30 @@ def convert_bn2gn(module):
         mod.add_module(name, convert_bn2gn(child))
     del module
     return mod
+
+
+import torch
+from torch import distributed
+
+def print_gpu_memory():
+    rank = distributed.get_rank()
+    if rank == 0:
+        # 获取当前设备数量
+        # device_count = torch.cuda.device_count()
+        # print(f"发现 {device_count} 个GPU设备")
+        
+        for i in range(1):
+            # 获取当前显存分配
+            allocated = torch.cuda.memory_allocated(i) / (1024 ** 3)  # 转换为GB
+            # 获取当前显存缓存
+            cached = torch.cuda.memory_reserved(i) / (1024 ** 3)  # 转换为GB
+            # 获取显卡名称
+            device_name = torch.cuda.get_device_name(i)
+            
+            print(f"GPU {i}: 已分配显存 - {allocated:.2f} GB, 缓存显存 - {cached:.2f} GB, 总显存使用: {allocated + cached:.2f} GB")
+            # print(f"  已分配显存: {allocated:.2f} GB")
+            # print(f"  缓存显存: {cached:.2f} GB")
+            # print(f"  总显存使用: {allocated + cached:.2f} GB")
+
+# # 调用函数
+# print_gpu_memory()

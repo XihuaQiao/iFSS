@@ -14,12 +14,12 @@ import torch
 
 import json
 
-def force_cudnn_initialization():
-    s = 32
-    dev = torch.device('cuda')
-    torch.nn.functional.conv2d(torch.zeros(s, s, s, s, device=dev), torch.zeros(s, s, s, s, device=dev))
+# def force_cudnn_initialization():
+#     s = 32
+#     dev = torch.device('cuda')
+#     torch.nn.functional.conv2d(torch.zeros(s, s, s, s, device=dev), torch.zeros(s, s, s, s, device=dev))
 
-force_cudnn_initialization()
+# force_cudnn_initialization()
 
 from torch.utils import data
 from torch import distributed
@@ -30,6 +30,8 @@ from task import Task
 
 from methods import get_method
 import time
+
+from utils.utils import print_gpu_memory
 
 
 
@@ -140,14 +142,17 @@ def main(opts):
     train_loader = data.DataLoader(train_dst, batch_size=min(opts.batch_size, len(train_dst)),
                                    sampler=DistributedSampler(train_dst, num_replicas=world_size, rank=rank),
                                    num_workers=opts.num_workers, drop_last=True)
-    train_noaug_loader = data.DataLoader(train_dst_no_aug, batch_size=opts.test_batch_size,
-                                   sampler=DistributedSampler(train_dst_no_aug, num_replicas=world_size, rank=rank),
-                                   num_workers=opts.num_workers, drop_last=True)
+    # train_noaug_loader = data.DataLoader(train_dst_no_aug, batch_size=opts.test_batch_size,
+    #                                sampler=DistributedSampler(train_dst_no_aug, num_replicas=world_size, rank=rank),
+    #                                num_workers=opts.num_workers, drop_last=True)
     val_loader = data.DataLoader(val_dst, batch_size=min(opts.batch_size, len(val_dst)),
                                  sampler=DistributedSampler(val_dst, num_replicas=world_size, rank=rank),
                                  num_workers=opts.num_workers)
     
     # print(f"train - {len(train_loader)}, val - {len(val_loader)}")
+
+    # print("after dataloader")
+    # print_gpu_memory()
 
     train_iterations = 1 if task.step == 0 else 20 // task.nshot
     if opts.iter is not None:
@@ -164,6 +169,9 @@ def main(opts):
     logger.info(f"Backbone: {opts.backbone}")
 
     model = get_method(opts, task, device, logger)
+    # print("after get_method")
+    # print_gpu_memory()
+
     logger.info(f"[!] Model made with{'out' if opts.no_pretrained else ''} pre-trained")
     # IF step > 0 you need to reload pretrained
     if task.step > 0 and not opts.test:
@@ -183,10 +191,14 @@ def main(opts):
     # put the model on DDP
     model.distribute()
 
+    # print("after distribute")
+    # print_gpu_memory()
+
     # xxx Handle checkpoint to resume training
     cur_epoch = 0
     if opts.continue_ckpt:
         opts.ckpt = checkpoint_path
+
     if opts.ckpt is not None and not opts.test:
         assert os.path.isfile(opts.ckpt), "Error, ckpt not found. Check the correct directory"
         checkpoint = torch.load(opts.ckpt, map_location="cpu")
@@ -211,7 +223,7 @@ def main(opts):
     results = {}
 
     # check if random is equal here.
-    logger.print(torch.randint(0, 100, (1, 1)))
+    # logger.print(torch.randint(0, 100, (1, 1)))
 
     test_dst_all, test_dst_novel = get_dataset(opts, task, train=False)
     test_loader_all = data.DataLoader(test_dst_all, batch_size=opts.test_batch_size,
@@ -223,6 +235,8 @@ def main(opts):
     
     if rank == 0:
         save_ckpt(checkpoint_path[:-3] + '_prev.pth', model, cur_epoch)
+
+    # print_gpu_memory()
 
     # train/val here
     while cur_epoch < opts.epochs and not opts.test:
@@ -252,35 +266,35 @@ def main(opts):
         end = time.time()
 
         len_ep = int(end - start)
-        logger.info(f"End of Epoch {cur_epoch}/{opts.epochs}, Average Loss={epoch_loss[0] + epoch_loss[1] + epoch_loss[2]:.4f}, "
-                    f"Class Loss={epoch_loss[0]:.4f}, Reg Loss={epoch_loss[1]}, Contrast Loss={epoch_loss[2]}\n"
+        logger.info(f"End of Epoch {cur_epoch}/{opts.epochs}, Average Loss={epoch_loss[0] + epoch_loss[1]:.4f}, "
+                    f"Class Loss={epoch_loss[0]:.4f}, Reg Loss={epoch_loss[1]:.4f}\n"
                     f"Train_Acc={train_score['Overall Acc']:.4f}, Train_Iou={train_score['Mean IoU']:.4f} "
                     f"\n -- time: {len_ep // 60}:{len_ep % 60} -- ")
         logger.info(f"I will finish in {len_ep * (opts.epochs - cur_epoch) // 60} minutes")
-        logger.add_scalar("E-Loss", epoch_loss[0] + epoch_loss[1] + epoch_loss[2], cur_epoch)
+        logger.add_scalar("E-Loss", epoch_loss[0] + epoch_loss[1], cur_epoch)
         logger.add_scalar("E-Loss-reg", epoch_loss[1], cur_epoch)
         logger.add_scalar("E-Loss-cls", epoch_loss[0], cur_epoch)
-        logger.add_scalar("E-Loss-contrast", epoch_loss[2], cur_epoch)
+        # logger.add_scalar("E-Loss-contrast", epoch_loss[2], cur_epoch)
 
         # =====  Validation  =====
         if (cur_epoch + 1) % opts.val_interval == 0:
             logger.info("validate on val set...")
 
-            valid_loss, _ = model.validate(loader=train_noaug_loader, metrics=valid_metrics, ret_samples_ids=None)
+            # valid_loss, _ = model.validate(loader=train_noaug_loader, metrics=valid_metrics, ret_samples_ids=None)
             # val_loss, _ = model.validate(loader=val_loader, metrics=val_metrics, ret_samples_ids=None)
             val_loss, _ = model.validate(loader=test_loader_all, metrics=val_metrics, ret_samples_ids=None)
 
             val_score = val_metrics.get_results()
-            valid_score = valid_metrics.get_results()
-            logger.add_scalar("Valid_NovelIoU", valid_score['Agg'][1], cur_epoch)
-            logger.add_scalar("Valid_loss", valid_loss, cur_epoch)
+            # valid_score = valid_metrics.get_results()
+            # logger.add_scalar("Valid_NovelIoU", valid_score['Agg'][1], cur_epoch)
+            # logger.add_scalar("Valid_loss", valid_loss, cur_epoch)
 
             current_HM = torch.tensor(val_score['Agg'][2]).to(device)
             distributed.reduce(current_HM, dst=0)
 
             if rank == 0:
                 current_HM = current_HM / world_size
-                current_MIoU = valid_score['Agg'][1]
+                # current_MIoU = val_score['Agg'][1]
                 if current_HM > best_HM:
                     logger.print(f"Current best model!! HM - {current_HM}")
                     best_HM = current_HM

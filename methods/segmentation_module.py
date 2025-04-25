@@ -73,7 +73,7 @@ def make_model(opts, cls=None, head_channels=None):
     else:
         head = nn.Conv2d(body.out_channels, head_channels, kernel_size=1)
 
-    model = SegmentationModule(body, head, head_channels, cls)
+    model = SegmentationModule(body, head, head_channels, cls, project=True if opts.contrast_loss != 0 else False)
 
     return model
 
@@ -98,19 +98,21 @@ class ProjectionHead(nn.Module):
 
 class SegmentationModule(nn.Module):
 
-    def __init__(self, body, head, head_channels, classifier):
+    def __init__(self, body, head, head_channels, classifier, project=False):
         super(SegmentationModule, self).__init__()
         self.body = body
         self.head = head
         self.head_channels = head_channels
-        self.proj_head = ProjectionHead(dim_in=head_channels, proj_dim=head_channels)
+        if project:
+            print(f"yes, there is project~~~~~~~~~~~~")
+            self.proj_head = ProjectionHead(dim_in=head_channels, proj_dim=head_channels)
         self.cls = classifier
         # print(f"classes - {self.cls.classes}")
 
-        num_classes = sum(self.cls.classes)
-        self.class_importance = nn.Parameter(torch.ones(num_classes) / num_classes)
-        self.channel_importance = nn.Parameter(torch.ones(head_channels))
-        self.spatial_importance = nn.Parameter(torch.ones(32, 32))
+        # num_classes = sum(self.cls.classes)
+        # self.class_importance = nn.Parameter(torch.ones(num_classes) / num_classes)
+        # self.channel_importance = nn.Parameter(torch.ones(head_channels))
+        # self.spatial_importance = nn.Parameter(torch.ones(32, 32))
 
         # self.centers = nn.Parameter(torch.randn(num_classes, head_channels))
 
@@ -137,44 +139,58 @@ class SegmentationModule(nn.Module):
             else:
                 sem_logits = out
 
+            ret_feat = ret_body = ret_embedding = None
+
             if return_feat:
-                if return_body:
-                    if return_embedding:
-                        embedding = self.proj_head(out)
-                        if target is not None:
-                            return sem_logits, out, x_b, embedding, y_a, y_b, lam
+                ret_feat = out
+            if return_body:
+                ret_body = x_b
+            if return_embedding:
+                ret_embedding = self.proj_head(out)
+            
+            if target is not None:
+                return sem_logits, ret_feat, ret_body, ret_embedding, y_a, y_b, lam
+
+            return sem_logits, ret_feat, ret_body, ret_embedding
+
+            # if return_feat:
+            #     if return_body:
+            #         if return_embedding:
+            #             embedding = self.proj_head(out)
+            #             if target is not None:
+            #                 return sem_logits, out, x_b, embedding, y_a, y_b, lam
                         
-                        if old_outputs is not None:
-                            # print(f"in - {out.shape}, old - {old_features.shape}")
-                            # print(f"class_importance - {self.class_importance}")
-                            logit_diff = (sem_logits - old_outputs) ** 2  # [num_classes]
+            #             if old_outputs is not None:
+            #                 # print(f"in - {out.shape}, old - {old_features.shape}")
+            #                 # print(f"class_importance - {self.class_importance}")
+            #                 logit_diff = (sem_logits - old_outputs) ** 2  # [num_classes]
 
-                            # print(self.class_importance.grad)
+            #                 # print(self.class_importance.grad)
                             
-                            # 计算逆相关权重（差异越大，权重越高）
-                            # 这里采用差异直接作为权重，而不是倒数，因为我们希望关注差异大的类别
-                            raw_weights = torch.einsum('c,bchw->bhw', self.class_importance, logit_diff).unsqueeze(1)
+            #                 # 计算逆相关权重（差异越大，权重越高）
+            #                 # 这里采用差异直接作为权重，而不是倒数，因为我们希望关注差异大的类别
+            #                 raw_weights = torch.einsum('c,bchw->bhw', self.class_importance, logit_diff).unsqueeze(1)
                             
-                            # 应用温度缩放和softmax归一化
-                            #TODO 这里的dim=0有问题？？？？
-                            # class_weights = torch.softmax(raw_weights, dim=0).unsqueeze(0)
-                            weights = torch.sigmoid(raw_weights)
+            #                 # 应用温度缩放和softmax归一化
+            #                 #TODO 这里的dim=0有问题？？？？
+            #                 # class_weights = torch.softmax(raw_weights, dim=0).unsqueeze(0)
+            #                 weights = torch.sigmoid(raw_weights)
 
-                            return sem_logits, out, x_b, embedding, weights
-                        if old_features is not None:
-                            stu = F.normalize(out, p=2, dim=1)
-                            old_features = F.normalize(old_features, p=2, dim=1)
-                            feat_diff = (stu - old_features) ** 2
-                            # print(f"feat_diff - {feat_diff.shape}")
-                            # print(f"spatial_importance - {torch.unique(self.spatial_importance)}")
-                            # raw_weights = torch.einsum('hw,bdhw->bd', self.spatial_importance, feat_diff)
-                            raw_weights = torch.einsum('d,bdhw->bhw', self.channel_importance, feat_diff)
-                            # raw_weights = torch.einsum('d, bdhw->bhw', self.channel_importance, torch.concat([stu, old_features], dim=1))
-                            weights = torch.sigmoid(raw_weights)
-                            return sem_logits, out, x_b, embedding, weights
-                        return sem_logits, out, x_b, embedding
-                    return sem_logits, out, x_b
-                return sem_logits, out
+            #                 return sem_logits, out, x_b, embedding, weights
+            #             if old_features is not None:
+            #                 stu = F.normalize(out, p=2, dim=1)
+            #                 old_features = F.normalize(old_features, p=2, dim=1)
+            #                 feat_diff = (stu - old_features) ** 2
+            #                 # print(f"feat_diff - {feat_diff.shape}")
+            #                 # print(f"spatial_importance - {torch.unique(self.spatial_importance)}")
+            #                 # raw_weights = torch.einsum('hw,bdhw->bd', self.spatial_importance, feat_diff)
+            #                 raw_weights = torch.einsum('d,bdhw->bhw', self.channel_importance, feat_diff)
+            #                 # raw_weights = torch.einsum('d, bdhw->bhw', self.channel_importance, torch.concat([stu, old_features], dim=1))
+            #                 weights = torch.sigmoid(raw_weights)
+            #                 return sem_logits, out, x_b, embedding, weights
+            #             return sem_logits, out, x_b, embedding
+            #         return sem_logits, out, x_b
+            #     return sem_logits, out
 
             return sem_logits
 
