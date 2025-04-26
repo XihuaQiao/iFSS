@@ -104,7 +104,7 @@ class SegmentationModule(nn.Module):
         self.head = head
         self.head_channels = head_channels
         if project:
-            print(f"yes, there is project~~~~~~~~~~~~")
+            # print(f"yes, there is project~~~~~~~~~~~~")
             self.proj_head = ProjectionHead(dim_in=head_channels, proj_dim=head_channels)
         self.cls = classifier
         # print(f"classes - {self.cls.classes}")

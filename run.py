@@ -358,8 +358,9 @@ def main(opts):
 
     if opts.memory:
         #TODO
-        memories = model.memory(train_loader, topK=5, num_classes=16)
-        with open(opts.ckpt.replace('pth', 'json'), 'w') as file:
+        memories = model.memory(train_loader, topK=5, num_classes=task.get_n_classes()[0])
+        typo = "topK"
+        with open(typo + opts.ckpt.replace('pth', 'json'), 'w') as file:
             json.dump(memories, file)
         return
 

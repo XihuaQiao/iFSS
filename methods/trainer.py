@@ -59,8 +59,8 @@ class Trainer:
 
         self.born_again = opts.born_again
         self.save_memory = opts.memory
-        self.dist_warm_start = opts.dist_warm_start
-        model_old_as_new = opts.born_again or opts.dist_warm_start
+        self.dist_warm_start = opts.dist_warm_start     # PIFS方法中为true
+        model_old_as_new = opts.born_again or opts.dist_warm_start      # 即在old model中增加new class classifier
         if self.need_model_old:
             self.model_old = self.make_model(is_old=not model_old_as_new)
             # put the old model into distributed memory and freeze it
@@ -155,8 +155,8 @@ class Trainer:
         else:
             self.feat_criterion = None
 
+        # embedding distillation
         if opts.embedding_loss > 0:
-
             self.embedding_loss = opts.embedding_loss
             # self.embedding_criterion = nn.MSELoss()
             # self.embedding_criterion = nn.L1Loss()
@@ -178,7 +178,7 @@ class Trainer:
                 self.kd_criterion = UnbiasedKnowledgeDistillationLoss(reduction="mean")
         else:
             self.kd_criterion = None
-            torch.nn.CrossEntropyLoss
+            # torch.nn.CrossEntropyLoss
 
         # Body distillation
         if opts.loss_de > 0:
@@ -291,7 +291,6 @@ class Trainer:
 
                 loss_tot = torch.tensor([0.]).to(self.device)
                 rloss = torch.tensor([0.]).to(self.device)
-                cont_loss = torch.tensor([0.]).to(self.device)
 
                 ret_feat = True if self.feat_criterion is not None else False
                 ret_body = True if self.de_criterion is not None else False
@@ -366,7 +365,7 @@ class Trainer:
 
                 if self.contrast_criterion is not None:
                     cont_loss = self.contrast_loss * self.contrast_criterion(labels, outputs, embedding)
-                    # print(f"contrast_loss - {tmp}")
+                    # print(f"contrast_loss - {cont_loss}")
                     if cont_loss <= CLIP:
                         rloss += cont_loss
                     else:
@@ -622,8 +621,8 @@ class Trainer:
             self.model.load_state_dict(model_state, strict=strict)
 
             if not self.born_again and strict and not self.save_memory:  # if strict, we are in ckpt (not step) so load also optim and scheduler
-                print(f"optimizer - {checkpoint['optimizer']['param_groups']}")
-                print(f"self optimizer - {self.optimizer['param_groups']}")
+                # print(f"optimizer - {checkpoint['optimizer']['param_groups']}")
+                # print(f"self optimizer - {self.optimizer['param_groups']}")
                 self.optimizer.load_state_dict(checkpoint["optimizer"])
                 self.scheduler.load_state_dict(checkpoint["scheduler"])
 

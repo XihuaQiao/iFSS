@@ -227,6 +227,7 @@ class PixelContrastLoss(nn.Module, ABC):
             total_classes += len(this_classes)
 
         if total_classes == 0:
+            print("no pixel in this batch with class")
             return None, None
 
         n_view = self.max_samples // total_classes
@@ -281,6 +282,9 @@ class PixelContrastLoss(nn.Module, ABC):
         return X_, y_
 
     def _contrastive(self, feats_, labels_):
+        if feats_ is None:
+            return torch.zeros([1], dtype=torch.float).cuda()
+        
         anchor_num, n_view = feats_.shape[0], feats_.shape[1]
 
         labels_ = labels_.contiguous().view(-1, 1)
