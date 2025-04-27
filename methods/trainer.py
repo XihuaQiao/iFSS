@@ -101,7 +101,7 @@ class Trainer:
 
         if opts.contrast_loss > 0:
             params.append({"params": filter(lambda p: p.requires_grad, self.model.proj_head.parameters()),
-                            'lr': opts.lr * 10})
+                            'lr': opts.lr})
         # else:
         #     for par in self.model.proj_head.parameters():
         #         par.requires_grad = False
@@ -306,10 +306,6 @@ class Trainer:
                             outputs_old, feat_old, body_old, embedding_old = self.model_old(images, return_feat=ret_feat, return_body=ret_body, return_embedding=ret_embd)
 
                 optim.zero_grad()
-                # if self.mixup_criterion:
-                #     outputs, feat, body, embedding, y_a, y_b, lam = model(images, target=labels, return_feat=True, return_body=True, return_embedding=True)
-                # else:
-                    # outputs, feat, body, embedding, channel_weights = model(images, return_feat=True, return_body=True, return_embedding=True, old_features=feat_old)
 
                 if self.mixup_criterion:
                     if self.model_old:
@@ -318,7 +314,6 @@ class Trainer:
                         outputs, feat, body, embedding, y_a, y_b, lam = model(images, target=labels, return_feat=ret_feat, return_body=ret_body, return_embedding=ret_embd)
                 else:
                         outputs, feat, body, embedding = model(images, return_feat=ret_feat, return_body=ret_body, return_embedding=ret_embd)
-                    # outputs, feat, body, embedding, weight = model(images, lam=lam, return_feat=True, return_body=True, return_embedding=True, old_features=feat_old)
 
                 # xxx Distillation/Regularization Losses
                 if self.model_old is not None:
@@ -373,7 +368,7 @@ class Trainer:
 
                 if self.mixup_criterion is not None:
                     #TODO
-                    loss = self.mixup_criterion(outputs, y_a, y_b, lam, num_classes=61, ignore_index=255, reduction='mean')
+                    loss = self.mixup_criterion(outputs, y_a, y_b, lam, num_classes=sum(self.task.get_n_classes()), ignore_index=255, reduction='mean')
                 else:
                     loss = self.reduction(F.cross_entropy(outputs, labels, ignore_index=255, reduction='none'), labels)
 
@@ -408,14 +403,14 @@ class Trainer:
                     metrics.update(labels, prediction)
 
                 cur_step += 1
-                if cur_step % 10 == 1 and self.device is torch.device('cuda:0'):
-                    if self.de_criterion:
-                #     print(f"embedding_loss - {embedding_loss}")
-                        print(f"body_loss - {de_loss}")
-                    if self.contrast_criterion:    
-                        print(f"contrast_loss - {cont_loss}")
-                    if self.feat_criterion:
-                        print(f"feature loss - {feat_loss}")
+                # if cur_step % 10 == 1 and self.device is torch.device('cuda:0'):
+                #     if self.de_criterion:
+                # #     print(f"embedding_loss - {embedding_loss}")
+                #         print(f"body_loss - {de_loss}")
+                #     if self.contrast_criterion:    
+                #         print(f"contrast_loss - {cont_loss}")
+                #     if self.feat_criterion:
+                #         print(f"feature loss - {feat_loss}")
 
                 if cur_step % print_int == 0:
                     # print(f"loss_tot: {loss_tot}, class loss - {loss}, reg loss - {rloss}, contrast loss - {cont_loss}")
@@ -506,22 +501,22 @@ class Trainer:
         return class_loss, ret_samples
     
 
-    def memory(self, loader, root='data', dataName='voc', topK=1, num_classes=20):
-        idxes = {}
-        class_to_images = pkl.load(open(f'{root}/{dataName}/split/inverse_dict_train.pkl', 'rb'))
-        # images = np.load(f'{root}/{dataName}/split/train_ids.npy')
+    # def memory(self, loader, root='data', dataName='voc', topK=1, num_classes=20):
+    #     idxes = {}
+    #     class_to_images = pkl.load(open(f'{root}/{dataName}/split/inverse_dict_train.pkl', 'rb'))
+    #     # images = np.load(f'{root}/{dataName}/split/train_ids.npy')
 
-        novel_images = set()
-        for cl, img_set in class_to_images.items():
-            if cl not in loader.dataset.labels and (cl != 0):
-                novel_images.update(img_set)
+    #     novel_images = set()
+    #     for cl, img_set in class_to_images.items():
+    #         if cl not in loader.dataset.labels and (cl != 0):
+    #             novel_images.update(img_set)
         
-        print(novel_images)
+    #     print(novel_images)
 
-        for cl in loader.dataset.labels:
-            idxes[cl] = random.sample(set(class_to_images[cl].tolist()).difference(novel_images), topK)
+    #     for cl in loader.dataset.labels:
+    #         idxes[cl] = random.sample(set(class_to_images[cl].tolist()).difference(novel_images), topK)
         
-        return idxes        
+    #     return idxes        
     
 
     def memory(self, loader, root='data', dataName='voc', topK=1, num_classes=20):
@@ -542,7 +537,7 @@ class Trainer:
                 outputs = F.softmax(outputs, dim=1)
 
                 # outputs = outputs.cpu().numpy()
-                _, predictions = outputs.max(dim=1)
+                # _, predictions = outputs.max(dim=1)
                 #TODO 用prediction还是label去计算prototype
 
                 for i in range(images.shape[0]):
